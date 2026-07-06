@@ -10,6 +10,33 @@ use tower_http::services::{ServeDir, ServeFile};
 
 use crate::store::AppState;
 
+// ── Embedded web assets (compiled into binary) ──────────────────────
+#[derive(rust_embed::Embed)]
+#[folder = "../dist"]
+#[include = "*"]
+struct EmbeddedAssets;
+
+// ── Runtime web-dist path lookup (dev / external mode) ──────────────
+fn get_web_dist_path() -> Option<PathBuf> {
+    // 1. Sibling of executable
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let p = dir.join("web-dist");
+            if p.exists() {
+                return Some(p);
+            }
+        }
+    }
+    // 2. Current working directory
+    if let Ok(cwd) = std::env::current_dir() {
+        let p = cwd.join("web-dist");
+        if p.exists() {
+            return Some(p);
+        }
+    }
+    None
+}
+
 pub struct WsState {
     pub tx: tokio::sync::broadcast::Sender<serde_json::Value>,
 }
@@ -18,24 +45,6 @@ impl WsState {
     pub fn new(tx: tokio::sync::broadcast::Sender<serde_json::Value>) -> Self {
         Self { tx }
     }
-}
-
-fn get_web_dist_path() -> PathBuf {
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            let p = dir.join("web-dist");
-            if p.exists() {
-                return p;
-            }
-        }
-    }
-    if let Ok(cwd) = std::env::current_dir() {
-        let p = cwd.join("web-dist");
-        if p.exists() {
-            return p;
-        }
-    }
-    PathBuf::from("web-dist")
 }
 
 pub fn create_router(app_state: Arc<AppState>, ws_state: Arc<WsState>) -> Router {
@@ -72,18 +81,50 @@ pub fn create_router(app_state: Arc<AppState>, ws_state: Arc<WsState>) -> Router
         .route("/api/ws", axum::routing::get(handlers::ws::ws_handler))
         .with_state(shared.clone());
 
-    let web_dist = get_web_dist_path();
-    let index = web_dist.join("index.html");
-    log::info!("Serving web assets from {:?}", web_dist);
-
-    let static_service = ServeDir::new(&web_dist).fallback(ServeFile::new(&index));
+    // ── Static asset serving: filesystem > embedded ─────────────
+    let static_service: axum::routing::MethodRouter = if let Some(web_dist) = get_web_dist_path() {
+        log::info!("Serving web assets from filesystem: {:?}", web_dist);
+        let index = web_dist.join("index.html");
+        axum::routing::any_service(ServeDir::new(&web_dist).fallback(ServeFile::new(&index)))
+    } else {
+        log::info!("Serving web assets from embedded binary (no external web-dist found)");
+        axum::routing::any(serve_embedded)
+    };
 
     Router::new()
         .nest("/api/v1", auth_routes.merge(protected))
         .route("/health", get(health_check))
         .merge(ws_routes)
-        .fallback_service(static_service)
+        .fallback(static_service)
         .layer(cors)
+}
+
+// ── Embedded asset handler (SPA fallback to index.html) ─────────────
+async fn serve_embedded(
+    req: axum::extract::Request,
+) -> impl IntoResponse {
+    let path = req.uri().path().trim_start_matches('/');
+
+    // Try exact file first
+    if let Some(content) = EmbeddedAssets::get(path) {
+        let mime = mime_guess::from_path(path).first_or_octet_stream();
+        return axum::response::Response::builder()
+            .status(StatusCode::OK)
+            .header("Content-Type", mime.as_ref())
+            .body(axum::body::Body::from(content.data))
+            .unwrap();
+    }
+
+    // SPA fallback: serve index.html for any non-API path
+    if let Some(index) = EmbeddedAssets::get("index.html") {
+        return axum::response::Response::builder()
+            .status(StatusCode::OK)
+            .header("Content-Type", "text/html; charset=utf-8")
+            .body(axum::body::Body::from(index.data))
+            .unwrap();
+    }
+
+    (StatusCode::NOT_FOUND, "web assets not found").into_response()
 }
 
 async fn health_check() -> impl IntoResponse {

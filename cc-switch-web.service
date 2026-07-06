@@ -1,0 +1,16 @@
+[Unit]
+Description=CC Switch Web UI
+After=network.target
+
+[Service]
+Type=simple
+User=guofukun
+WorkingDirectory=/vol1/1000/config/share/ccswitch-web-official
+ExecStart=/vol1/1000/config/share/ccswitch-web-official/cc-switch --headless --enable-web
+Restart=on-failure
+RestartSec=5
+Environment=CC_SWITCH_WEB_PORT=17667
+Environment=CC_SWITCH_WEB_BIND_ALL=true
+
+[Install]
+WantedBy=multi-user.target
