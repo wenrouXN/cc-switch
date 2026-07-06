@@ -32,6 +32,8 @@ mod services;
 mod session_manager;
 mod settings;
 mod store;
+mod headless;
+mod web;
 
 mod tray;
 mod usage_events;
@@ -219,6 +221,11 @@ fn macos_tray_icon() -> Option<Image<'static>> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Headless mode: start embedded web server directly, skip Tauri/GTK.
+    if std::env::args().any(|a| a == "--headless") {
+        crate::headless::run_headless();
+    }
+
     // 设置 panic hook，在应用崩溃时记录日志到 <app_config_dir>/crash.log（默认 ~/.cc-switch/crash.log）
     panic_hook::setup_panic_hook();
 

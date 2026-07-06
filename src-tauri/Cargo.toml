@@ -48,9 +48,9 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "sync"
 futures = "0.3"
 async-stream = "0.3"
 bytes = "1.5"
-axum = "0.7"
+axum = { version = "0.7", features = ["ws", "multipart"] }
 tower = "0.4"
-tower-http = { version = "0.5", features = ["cors"] }
+tower-http = { version = "0.5", features = ["cors", "trace", "fs"] }
 hyper = { version = "1.0", features = ["full"] }
 hyper-util = { version = "0.1", features = ["tokio", "http1", "client-legacy"] }
 hyper-rustls = { version = "0.27", features = ["http1", "tls12", "ring", "webpki-tokio"] }
@@ -81,6 +81,9 @@ sha2 = "0.10"
 hmac = "0.12"
 json5 = "0.4"
 json-five = "0.3.1"
+jsonwebtoken = "9"
+subtle = "2"
+tracing = "0.1"
 
 [target.'cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))'.dependencies]
 tauri-plugin-single-instance = "2"
@@ -111,3 +114,4 @@ strip = "symbols"
 [dev-dependencies]
 serial_test = "3"
 tempfile = "3"
+
