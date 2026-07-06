@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { usageApi } from "@/lib/api/usage";
+import { usageApi } from "@/lib/api";
 import { resolveUsageRange } from "@/lib/usageRange";
 import type {
   LogFilters,

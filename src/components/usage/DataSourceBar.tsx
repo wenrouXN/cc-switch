@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { usageApi } from "@/lib/api/usage";
+import { usageApi } from "@/lib/api";
 import { usageKeys } from "@/lib/query/usage";
 import { Database, FileText, RefreshCw, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";

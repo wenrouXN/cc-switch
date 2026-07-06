@@ -58,6 +58,7 @@ pub fn create_router(app_state: Arc<AppState>, ws_state: Arc<WsState>) -> Router
         .nest("/sessions", routes::sessions::routes())
         .nest("/hermes", routes::hermes::routes())
         .nest("/openclaw", routes::openclaw::routes())
+        .nest("/usage", routes::usage::routes())
         .nest("/universal-providers", routes::providers::universal_routes())
         .layer(axum::middleware::from_fn(middleware::auth::auth_middleware))
         .with_state(shared.clone());
