@@ -5,6 +5,7 @@ import React, {
   useMemo,
   useState,
 } from "react";
+import { isTauri } from "@/lib/environment";
 import { invoke } from "@tauri-apps/api/core";
 
 type Theme = "light" | "dark" | "system";
@@ -97,6 +98,7 @@ export function ThemeProvider({
 
   // Sync native window theme (Windows/macOS title bar)
   useEffect(() => {
+    if (!isTauri()) return;
     if (typeof window === "undefined") {
       return;
     }
@@ -109,7 +111,6 @@ export function ThemeProvider({
         await invoke("set_window_theme", { theme: nativeTheme });
       } catch (e) {
         // Ignore errors (e.g., when not running in Tauri)
-        console.debug("Failed to set native window theme:", e);
       }
     };
 
