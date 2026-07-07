@@ -561,6 +561,73 @@ pnpm test:unit --coverage
 
 </details>
 
+## Web UI 部署
+
+除了桌面应用，CC Switch 还提供独立的 Web 管理界面，支持在服务器或无桌面环境（如 NAS、VPS、Docker）中运行。
+
+### 特点
+
+- **单文件部署** — 前端资源已嵌入二进制，无需额外的 `web-dist` 目录
+- **无桌面环境支持** — 通过 `--headless --enable-web` 参数在纯命令行环境运行
+- **局域网/远程访问** — 支持通过浏览器在手机、平板等设备上管理
+- **完整功能** — 供应商管理、MCP、Skills、Prompt、使用统计、故障转移等桌面版全部功能
+- **systemd 自启动** — 支持配置开机自启动服务
+
+### 快速开始
+
+```bash
+# 1. 从 Release 下载 Linux 二进制
+wget https://github.com/farion1231/cc-switch/releases/latest/download/cc-switch-linux-x86_64
+
+# 2. 添加执行权限
+chmod +x cc-switch-linux-x86_64
+
+# 3. 启动 Web 服务（默认端口 17667）
+CC_SWITCH_WEB_PORT=17667 CC_SWITCH_WEB_BIND_ALL=true ./cc-switch-linux-x86_64 --headless --enable-web
+
+# 4. 浏览器访问
+# http://<your-ip>:17667
+```
+
+### 环境变量
+
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `CC_SWITCH_WEB_PORT` | Web 服务端口 | `17667` |
+| `CC_SWITCH_WEB_BIND_ALL` | 是否绑定所有网卡 | `false` |
+| `CC_SWITCH_WEB_PASSWORD` | 登录密码（首次运行自动生成） | `admin` |
+
+### systemd 自启动服务
+
+创建 `/etc/systemd/system/cc-switch-web.service`：
+
+```ini
+[Unit]
+Description=CC Switch Web UI
+After=network.target
+
+[Service]
+Type=simple
+User=your-username
+WorkingDirectory=/opt/cc-switch
+ExecStart=/opt/cc-switch/cc-switch --headless --enable-web
+Environment=CC_SWITCH_WEB_PORT=17667
+Environment=CC_SWITCH_WEB_BIND_ALL=true
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+然后启用并启动：
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable cc-switch-web
+sudo systemctl start cc-switch-web
+```
+
 ## 贡献
 
 欢迎提交 Issue 反馈问题和建议！

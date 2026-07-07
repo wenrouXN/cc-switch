@@ -558,6 +558,73 @@ pnpm test:unit --coverage
 
 </details>
 
+## Web UI Deployment
+
+In addition to the desktop app, CC Switch provides a standalone web management interface for running on servers or headless environments (NAS, VPS, Docker, etc.).
+
+### Features
+
+- **Single-file deployment** — Web assets are embedded in the binary, no separate `web-dist` directory needed
+- **Headless environment support** — Run on pure CLI via `--headless --enable-web`
+- **LAN/remote access** — Manage from phones, tablets, or any device via browser
+- **Full functionality** — Provider management, MCP, Skills, Prompts, Usage Statistics, Failover — all desktop features
+- **systemd auto-start** — Configure automatic startup on boot
+
+### Quick Start
+
+```bash
+# 1. Download Linux binary from Release
+wget https://github.com/farion1231/cc-switch/releases/latest/download/cc-switch-linux-x86_64
+
+# 2. Make executable
+chmod +x cc-switch-linux-x86_64
+
+# 3. Start web server (default port 17667)
+CC_SWITCH_WEB_PORT=17667 CC_SWITCH_WEB_BIND_ALL=true ./cc-switch-linux-x86_64 --headless --enable-web
+
+# 4. Open in browser
+# http://<your-ip>:17667
+```
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `CC_SWITCH_WEB_PORT` | Web server port | `17667` |
+| `CC_SWITCH_WEB_BIND_ALL` | Bind to all network interfaces | `false` |
+| `CC_SWITCH_WEB_PASSWORD` | Login password (auto-generated on first run) | `admin` |
+
+### systemd Auto-start Service
+
+Create `/etc/systemd/system/cc-switch-web.service`:
+
+```ini
+[Unit]
+Description=CC Switch Web UI
+After=network.target
+
+[Service]
+Type=simple
+User=your-username
+WorkingDirectory=/opt/cc-switch
+ExecStart=/opt/cc-switch/cc-switch --headless --enable-web
+Environment=CC_SWITCH_WEB_PORT=17667
+Environment=CC_SWITCH_WEB_BIND_ALL=true
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Then enable and start:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable cc-switch-web
+sudo systemctl start cc-switch-web
+```
+
 ## Contributing
 
 Issues and suggestions are welcome!
