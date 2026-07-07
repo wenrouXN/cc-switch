@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { EnvConflict, BackupInfo } from "@/types/env";
+import { isTauri } from "@/lib/environment";
 
 /**
  * 环境变量管理 API
@@ -13,6 +14,7 @@ import type { EnvConflict, BackupInfo } from "@/types/env";
 export async function checkEnvConflicts(
   appType: string,
 ): Promise<EnvConflict[]> {
+  if (!isTauri()) return [];
   return invoke<EnvConflict[]>("check_env_conflicts", { app: appType });
 }
 
@@ -42,6 +44,7 @@ export async function restoreEnvBackup(backupPath: string): Promise<void> {
 export async function checkAllEnvConflicts(): Promise<
   Record<string, EnvConflict[]>
 > {
+  if (!isTauri()) return {};
   const apps = ["claude", "codex", "gemini"];
   const results: Record<string, EnvConflict[]> = {};
 

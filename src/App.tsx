@@ -27,6 +27,7 @@ import {
   LayoutDashboard,
 } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { isTauri } from "@/lib/environment";
 import type { Provider, VisibleApps } from "@/types";
 import type { EnvConflict } from "@/types/env";
 import { useProvidersQuery, useSettingsQuery } from "@/lib/query";
@@ -332,6 +333,7 @@ function App() {
   };
 
   useEffect(() => {
+    if (!isTauri()) return;
     let unsubscribe: (() => void) | undefined;
     let active = true;
 
@@ -416,6 +418,7 @@ function App() {
   );
 
   useEffect(() => {
+    if (!isTauri()) return;
     let active = true;
     let unlistenResize: (() => void) | undefined;
 
@@ -447,7 +450,7 @@ function App() {
 
   useEffect(() => {
     // settingsData 未加载时跳过，避免用 fallback false 覆盖 Rust 侧已设好的装饰状态
-    if (!settingsData) return;
+    if (!settingsData || !isTauri()) return;
 
     const syncWindowDecorations = async () => {
       try {
@@ -485,6 +488,7 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (!isTauri()) return;
     const checkMigration = async () => {
       try {
         const migrated = await invoke<boolean>("get_migration_result");
@@ -503,6 +507,7 @@ function App() {
   }, [t]);
 
   useEffect(() => {
+    if (!isTauri()) return;
     const checkSkillsMigration = async () => {
       try {
         const result = await invoke<{ count: number; error?: string } | null>(
