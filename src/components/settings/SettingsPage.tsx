@@ -56,6 +56,7 @@ import { useInstalledSkills } from "@/hooks/useSkills";
 import { useSettings } from "@/hooks/useSettings";
 import { useImportExport } from "@/hooks/useImportExport";
 import { useTranslation } from "react-i18next";
+import { isTauri } from "@/lib/environment";
 import type { SettingsFormState } from "@/hooks/useSettings";
 
 interface SettingsDialogProps {
@@ -278,16 +279,20 @@ export function SettingsPage({
                       settings={settings}
                       onChange={handleAutoSave}
                     />
-                    <WindowSettings
-                      settings={settings}
-                      onChange={handleAutoSave}
-                    />
-                    <TerminalSettings
-                      value={settings.preferredTerminal}
-                      onChange={(terminal) =>
-                        handleAutoSave({ preferredTerminal: terminal })
-                      }
-                    />
+                    {isTauri() && (
+                      <>
+                        <WindowSettings
+                          settings={settings}
+                          onChange={handleAutoSave}
+                        />
+                        <TerminalSettings
+                          value={settings.preferredTerminal}
+                          onChange={(terminal) =>
+                            handleAutoSave({ preferredTerminal: terminal })
+                          }
+                        />
+                      </>
+                    )}
                   </motion.div>
                 ) : null}
               </TabsContent>
