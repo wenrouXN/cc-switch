@@ -132,11 +132,7 @@ const VALID_APPS: AppId[] = [
 ];
 
 const getInitialApp = (): AppId => {
-  const saved = localStorage.getItem(STORAGE_KEY) as AppId | null;
-  if (saved && VALID_APPS.includes(saved)) {
-    return saved;
-  }
-  return "claude";
+  return "codex";
 };
 
 const VIEW_STORAGE_KEY = "cc-switch-last-view";
@@ -158,10 +154,6 @@ const VALID_VIEWS: View[] = [
 ];
 
 const getInitialView = (): View => {
-  const saved = localStorage.getItem(VIEW_STORAGE_KEY) as View | null;
-  if (saved && VALID_VIEWS.includes(saved)) {
-    return saved;
-  }
   return "providers";
 };
 
@@ -179,9 +171,6 @@ function App() {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isWindowMaximized, setIsWindowMaximized] = useState(false);
 
-  useEffect(() => {
-    localStorage.setItem(VIEW_STORAGE_KEY, currentView);
-  }, [currentView]);
 
   const { data: settingsData } = useSettingsQuery();
   const useAppWindowControls =
