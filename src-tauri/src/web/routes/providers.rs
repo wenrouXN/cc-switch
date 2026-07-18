@@ -1,19 +1,20 @@
-//! Provider routes — delegate to `ProviderService` and `Database`.
+//! Provider routes — thin HTTP shell over `ProviderService` / Database.
 //!
-//! Mirrors `commands/provider.rs` for the subset the web UI needs.
+//! Mirrors `commands/provider.rs` for the web UI write path (CRUD + import + sort).
 
 use axum::{
-    extract::{Query, State},
-    routing::{get, post},
+    extract::{Path, Query, State},
+    routing::{delete, get, post, put},
     Json, Router,
 };
 use serde::Deserialize;
 use serde_json::json;
+use std::str::FromStr;
 use std::sync::Arc;
 
 use crate::app_config::AppType;
-use std::str::FromStr;
-use crate::services::ProviderService;
+use crate::provider::Provider;
+use crate::services::{ProviderService, ProviderSortUpdate};
 use crate::store::AppState;
 use crate::web::WsState;
 
@@ -22,9 +23,42 @@ type Shared = (Arc<AppState>, Arc<WsState>);
 pub fn routes() -> Router<Shared> {
     Router::new()
         .route("/", get(list_providers))
+        .route("/", post(add_provider))
         .route("/current", get(get_current))
+        .route("/sort", post(update_sort))
+        .route("/import-default", post(import_default))
+        .route("/import-opencode-live", post(import_opencode_live))
+        .route("/import-openclaw-live", post(import_openclaw_live))
+        .route("/import-hermes-live", post(import_hermes_live))
+        .route(
+            "/import-claude-desktop-from-claude",
+            post(import_claude_desktop_from_claude),
+        )
+        .route(
+            "/ensure-claude-desktop-official",
+            post(ensure_claude_desktop_official),
+        )
+        .route("/claude-desktop-status", get(claude_desktop_status))
+        .route(
+            "/claude-desktop-default-routes",
+            get(claude_desktop_default_routes),
+        )
+        .route("/opencode-live-ids", get(opencode_live_ids))
+        .route("/openclaw-live-ids", get(openclaw_live_ids))
+        .route("/hermes-live-ids", get(hermes_live_ids))
+        .route("/:id", get(get_one))
+        .route("/:id", put(update_provider))
+        .route("/:id", delete(delete_provider))
         .route("/:id/switch", post(switch))
-        .route("/:id", axum::routing::get(get_one))
+        .route("/:id/remove-from-live", post(remove_from_live))
+}
+
+fn ok<T: serde::Serialize>(data: T) -> Json<serde_json::Value> {
+    Json(json!({ "success": true, "data": data }))
+}
+
+fn err(msg: impl ToString) -> Json<serde_json::Value> {
+    Json(json!({ "success": false, "error": msg.to_string() }))
 }
 
 #[derive(Deserialize)]
@@ -32,12 +66,25 @@ struct AppQuery {
     app: String,
 }
 
-fn ok<T: serde::Serialize>(data: T) -> Json<serde_json::Value> {
-    Json(json!({"success": true, "data": data}))
+#[derive(Deserialize)]
+struct ProviderBody {
+    provider: Provider,
+    app: String,
+    #[serde(default, rename = "addToLive")]
+    add_to_live: Option<bool>,
+    #[serde(default, rename = "originalId")]
+    original_id: Option<String>,
 }
 
-fn err(msg: impl ToString) -> Json<serde_json::Value> {
-    Json(json!({"success": false, "error": msg.to_string()}))
+#[derive(Deserialize)]
+struct SortBody {
+    updates: Vec<ProviderSortUpdate>,
+    app: String,
+}
+
+#[derive(Deserialize)]
+struct AppBody {
+    app: String,
 }
 
 async fn list_providers(
@@ -70,7 +117,7 @@ async fn get_current(
 
 async fn get_one(
     State((state, _)): State<Shared>,
-    axum::extract::Path(id): axum::extract::Path<String>,
+    Path(id): Path<String>,
     Query(q): Query<AppQuery>,
 ) -> Json<serde_json::Value> {
     match state.db.get_provider_by_id(&id, &q.app) {
@@ -80,22 +127,235 @@ async fn get_one(
     }
 }
 
-async fn switch(
+async fn add_provider(
     State((state, _)): State<Shared>,
-    axum::extract::Path(id): axum::extract::Path<String>,
+    Json(body): Json<ProviderBody>,
+) -> Json<serde_json::Value> {
+    let app_type = match AppType::from_str(&body.app) {
+        Ok(a) => a,
+        Err(e) => return err(e.to_string()),
+    };
+    match ProviderService::add(
+        &state,
+        app_type,
+        body.provider,
+        body.add_to_live.unwrap_or(true),
+    ) {
+        Ok(v) => ok(v),
+        Err(e) => err(e.to_string()),
+    }
+}
+
+async fn update_provider(
+    State((state, _)): State<Shared>,
+    Path(id): Path<String>,
+    Json(body): Json<ProviderBody>,
+) -> Json<serde_json::Value> {
+    let app_type = match AppType::from_str(&body.app) {
+        Ok(a) => a,
+        Err(e) => return err(e.to_string()),
+    };
+    let original = body
+        .original_id
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .unwrap_or(id.as_str());
+    match ProviderService::update(&state, app_type, Some(original), body.provider) {
+        Ok(v) => ok(v),
+        Err(e) => err(e.to_string()),
+    }
+}
+
+async fn delete_provider(
+    State((state, _)): State<Shared>,
+    Path(id): Path<String>,
     Query(q): Query<AppQuery>,
 ) -> Json<serde_json::Value> {
     let app_type = match AppType::from_str(&q.app) {
         Ok(a) => a,
         Err(e) => return err(e.to_string()),
     };
-    // Use ProviderService::switch which handles live config + proxy takeover + DB
+    match ProviderService::delete(&state, app_type, &id) {
+        Ok(()) => ok(true),
+        Err(e) => err(e.to_string()),
+    }
+}
+
+async fn switch(
+    State((state, _)): State<Shared>,
+    Path(id): Path<String>,
+    Query(q): Query<AppQuery>,
+) -> Json<serde_json::Value> {
+    let app_type = match AppType::from_str(&q.app) {
+        Ok(a) => a,
+        Err(e) => return err(e.to_string()),
+    };
     match ProviderService::switch(&state, app_type, &id) {
-        Ok(_) => {
-            // Also update proxy target if proxy is running
+        Ok(result) => {
             let _ = state.proxy_service.switch_proxy_target(&q.app, &id).await;
-            ok(true)
+            ok(result)
         }
+        Err(e) => err(e.to_string()),
+    }
+}
+
+async fn remove_from_live(
+    State((state, _)): State<Shared>,
+    Path(id): Path<String>,
+    Json(body): Json<AppBody>,
+) -> Json<serde_json::Value> {
+    let app_type = match AppType::from_str(&body.app) {
+        Ok(a) => a,
+        Err(e) => return err(e.to_string()),
+    };
+    match ProviderService::remove_from_live_config(&state, app_type, &id) {
+        Ok(()) => ok(true),
+        Err(e) => err(e.to_string()),
+    }
+}
+
+async fn update_sort(
+    State((state, _)): State<Shared>,
+    Json(body): Json<SortBody>,
+) -> Json<serde_json::Value> {
+    let app_type = match AppType::from_str(&body.app) {
+        Ok(a) => a,
+        Err(e) => return err(e.to_string()),
+    };
+    match ProviderService::update_sort_order(&state, app_type, body.updates) {
+        Ok(v) => ok(v),
+        Err(e) => err(e.to_string()),
+    }
+}
+
+async fn import_default(
+    State((state, _)): State<Shared>,
+    Json(body): Json<AppBody>,
+) -> Json<serde_json::Value> {
+    let app_type = match AppType::from_str(&body.app) {
+        Ok(a) => a,
+        Err(e) => return err(e.to_string()),
+    };
+    match ProviderService::import_default_config(&state, app_type) {
+        Ok(v) => ok(v),
+        Err(e) => err(e.to_string()),
+    }
+}
+
+async fn import_opencode_live(State((state, _)): State<Shared>) -> Json<serde_json::Value> {
+    match crate::services::provider::import_opencode_providers_from_live(&state) {
+        Ok(n) => ok(n),
+        Err(e) => err(e.to_string()),
+    }
+}
+
+async fn import_openclaw_live(State((state, _)): State<Shared>) -> Json<serde_json::Value> {
+    match crate::services::provider::import_openclaw_providers_from_live(&state) {
+        Ok(n) => ok(n),
+        Err(e) => err(e.to_string()),
+    }
+}
+
+async fn import_hermes_live(State((state, _)): State<Shared>) -> Json<serde_json::Value> {
+    match crate::services::provider::import_hermes_providers_from_live(&state) {
+        Ok(n) => ok(n),
+        Err(e) => err(e.to_string()),
+    }
+}
+
+async fn import_claude_desktop_from_claude(
+    State((state, _)): State<Shared>,
+) -> Json<serde_json::Value> {
+    // Thin reimplementation of commands/provider.rs::import_claude_desktop_providers_from_claude
+    // without Tauri AppHandle dependency.
+    use crate::provider::ClaudeDesktopMode;
+
+    let claude_providers = match state.db.get_all_providers(AppType::Claude.as_str()) {
+        Ok(p) => p,
+        Err(e) => return err(e.to_string()),
+    };
+    let existing_ids = match state.db.get_provider_ids(AppType::ClaudeDesktop.as_str()) {
+        Ok(ids) => ids,
+        Err(e) => return err(e.to_string()),
+    };
+
+    let mut imported = 0usize;
+    for provider in claude_providers.values() {
+        if existing_ids.contains(&provider.id) {
+            continue;
+        }
+        let mut desktop_provider = provider.clone();
+        desktop_provider.in_failover_queue = false;
+        let meta = desktop_provider.meta.get_or_insert_with(Default::default);
+
+        if crate::claude_desktop_config::is_compatible_direct_provider(provider) {
+            meta.claude_desktop_mode = Some(ClaudeDesktopMode::Direct);
+        } else {
+            // Proxy-mode import requires desktop route suggestion; skip if unavailable.
+            // Keep parity with desktop import: only compatible providers are imported.
+            continue;
+        }
+
+        if let Err(e) = state
+            .db
+            .save_provider(AppType::ClaudeDesktop.as_str(), &desktop_provider)
+        {
+            return err(e.to_string());
+        }
+        imported += 1;
+    }
+
+    if let Err(e) = state.db.ensure_official_seed_by_id(
+        crate::database::CLAUDE_DESKTOP_OFFICIAL_PROVIDER_ID,
+        AppType::ClaudeDesktop,
+    ) {
+        log::warn!("Failed to ensure claude-desktop-official seed during import: {e}");
+    }
+
+    ok(imported)
+}
+
+async fn ensure_claude_desktop_official(
+    State((state, _)): State<Shared>,
+) -> Json<serde_json::Value> {
+    match state.db.ensure_official_seed_by_id(
+        crate::database::CLAUDE_DESKTOP_OFFICIAL_PROVIDER_ID,
+        AppType::ClaudeDesktop,
+    ) {
+        Ok(v) => ok(v),
+        Err(e) => err(e.to_string()),
+    }
+}
+
+async fn claude_desktop_status(State((state, _)): State<Shared>) -> Json<serde_json::Value> {
+    let proxy_running = state.proxy_service.is_running().await;
+    match crate::claude_desktop_config::get_status(state.db.as_ref(), proxy_running) {
+        Ok(v) => ok(v),
+        Err(e) => err(e.to_string()),
+    }
+}
+
+async fn claude_desktop_default_routes() -> Json<serde_json::Value> {
+    ok(crate::claude_desktop_config::default_proxy_routes())
+}
+
+async fn opencode_live_ids() -> Json<serde_json::Value> {
+    match crate::opencode_config::get_providers() {
+        Ok(providers) => ok(providers.keys().cloned().collect::<Vec<_>>()),
+        Err(e) => err(e.to_string()),
+    }
+}
+
+async fn openclaw_live_ids() -> Json<serde_json::Value> {
+    match crate::openclaw_config::get_providers() {
+        Ok(providers) => ok(providers.keys().cloned().collect::<Vec<_>>()),
+        Err(e) => err(e.to_string()),
+    }
+}
+
+async fn hermes_live_ids() -> Json<serde_json::Value> {
+    match crate::hermes_config::get_providers() {
+        Ok(providers) => ok(providers.keys().cloned().collect::<Vec<_>>()),
         Err(e) => err(e.to_string()),
     }
 }
@@ -107,13 +367,11 @@ pub fn universal_routes() -> Router<Shared> {
         .route("/", get(list_universal))
         .route("/:id", get(get_universal))
         .route("/", post(upsert_universal))
-        .route("/:id", axum::routing::delete(delete_universal))
+        .route("/:id", delete(delete_universal))
         .route("/:id/sync", post(sync_universal))
 }
 
-async fn list_universal(
-    State((state, _)): State<Shared>,
-) -> Json<serde_json::Value> {
+async fn list_universal(State((state, _)): State<Shared>) -> Json<serde_json::Value> {
     match state.db.get_all_universal_providers() {
         Ok(providers) => ok(providers),
         Err(e) => err(e),
@@ -122,7 +380,7 @@ async fn list_universal(
 
 async fn get_universal(
     State((state, _)): State<Shared>,
-    axum::extract::Path(id): axum::extract::Path<String>,
+    Path(id): Path<String>,
 ) -> Json<serde_json::Value> {
     match state.db.get_universal_provider(&id) {
         Ok(provider) => ok(provider),
@@ -142,7 +400,7 @@ async fn upsert_universal(
 
 async fn delete_universal(
     State((state, _)): State<Shared>,
-    axum::extract::Path(id): axum::extract::Path<String>,
+    Path(id): Path<String>,
 ) -> Json<serde_json::Value> {
     match state.db.delete_universal_provider(&id) {
         Ok(_) => ok(true),
@@ -152,9 +410,9 @@ async fn delete_universal(
 
 async fn sync_universal(
     State((state, _)): State<Shared>,
-    axum::extract::Path(id): axum::extract::Path<String>,
+    Path(id): Path<String>,
 ) -> Json<serde_json::Value> {
-    match crate::services::ProviderService::sync_universal_to_apps(&state, &id) {
+    match ProviderService::sync_universal_to_apps(&state, &id) {
         Ok(_) => ok(true),
         Err(e) => err(e),
     }
