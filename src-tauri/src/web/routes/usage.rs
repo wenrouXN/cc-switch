@@ -62,7 +62,9 @@ struct LogsQuery {
     page_size: u32,
 }
 
-fn default_page_size() -> u32 { 20 }
+fn default_page_size() -> u32 {
+    20
+}
 
 #[derive(Deserialize)]
 struct RequestDetailQuery {
@@ -113,8 +115,11 @@ async fn get_summary(
     Query(q): Query<UsageQuery>,
 ) -> Json<serde_json::Value> {
     match state.db.get_usage_summary(
-        q.start_date, q.end_date, q.app_type.as_deref(),
-        q.provider_name.as_deref(), q.model.as_deref(),
+        q.start_date,
+        q.end_date,
+        q.app_type.as_deref(),
+        q.provider_name.as_deref(),
+        q.model.as_deref(),
     ) {
         Ok(s) => ok(s),
         Err(e) => err(e),
@@ -126,8 +131,10 @@ async fn get_summary_by_app(
     Query(q): Query<UsageQuery>,
 ) -> Json<serde_json::Value> {
     match state.db.get_usage_summary_by_app(
-        q.start_date, q.end_date,
-        q.provider_name.as_deref(), q.model.as_deref(),
+        q.start_date,
+        q.end_date,
+        q.provider_name.as_deref(),
+        q.model.as_deref(),
     ) {
         Ok(s) => ok(s),
         Err(e) => err(e),
@@ -139,8 +146,11 @@ async fn get_trends(
     Query(q): Query<UsageQuery>,
 ) -> Json<serde_json::Value> {
     match state.db.get_daily_trends(
-        q.start_date, q.end_date, q.app_type.as_deref(),
-        q.provider_name.as_deref(), q.model.as_deref(),
+        q.start_date,
+        q.end_date,
+        q.app_type.as_deref(),
+        q.provider_name.as_deref(),
+        q.model.as_deref(),
     ) {
         Ok(t) => ok(t),
         Err(e) => err(e),
@@ -152,8 +162,11 @@ async fn get_provider_stats(
     Query(q): Query<UsageQuery>,
 ) -> Json<serde_json::Value> {
     match state.db.get_provider_stats(
-        q.start_date, q.end_date, q.app_type.as_deref(),
-        q.provider_name.as_deref(), q.model.as_deref(),
+        q.start_date,
+        q.end_date,
+        q.app_type.as_deref(),
+        q.provider_name.as_deref(),
+        q.model.as_deref(),
     ) {
         Ok(s) => ok(s),
         Err(e) => err(e),
@@ -165,8 +178,11 @@ async fn get_model_stats(
     Query(q): Query<UsageQuery>,
 ) -> Json<serde_json::Value> {
     match state.db.get_model_stats(
-        q.start_date, q.end_date, q.app_type.as_deref(),
-        q.provider_name.as_deref(), q.model.as_deref(),
+        q.start_date,
+        q.end_date,
+        q.app_type.as_deref(),
+        q.provider_name.as_deref(),
+        q.model.as_deref(),
     ) {
         Ok(s) => ok(s),
         Err(e) => err(e),
@@ -201,9 +217,7 @@ async fn get_request_detail(
     }
 }
 
-async fn get_model_pricing(
-    State((state, _)): State<Shared>,
-) -> Json<serde_json::Value> {
+async fn get_model_pricing(State((state, _)): State<Shared>) -> Json<serde_json::Value> {
     if let Err(e) = state.db.ensure_model_pricing_seeded() {
         return err(e);
     }
@@ -258,8 +272,12 @@ async fn update_model_pricing(
     let db = state.db.clone();
     let model_id = body.model_id.trim().to_string();
     let display_name = body.display_name.trim().to_string();
-    if model_id.is_empty() { return err("model_id required"); }
-    if display_name.is_empty() { return err("display_name required"); }
+    if model_id.is_empty() {
+        return err("model_id required");
+    }
+    if display_name.is_empty() {
+        return err("display_name required");
+    }
 
     let conn = match db.conn.lock() {
         Ok(c) => c,
@@ -271,8 +289,12 @@ async fn update_model_pricing(
             cache_read_cost_per_million, cache_creation_cost_per_million
         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         rusqlite::params![
-            model_id, display_name, body.input_cost.trim(), body.output_cost.trim(),
-            body.cache_read_cost.trim(), body.cache_creation_cost.trim()
+            model_id,
+            display_name,
+            body.input_cost.trim(),
+            body.output_cost.trim(),
+            body.cache_read_cost.trim(),
+            body.cache_creation_cost.trim()
         ],
     ) {
         Ok(_) => {
@@ -311,33 +333,53 @@ async fn check_provider_limits(
     }
 }
 
-async fn sync_session_usage(
-    State((state, _)): State<Shared>,
-) -> Json<serde_json::Value> {
+async fn sync_session_usage(State((state, _)): State<Shared>) -> Json<serde_json::Value> {
     let mut result = crate::services::session_usage::sync_claude_session_logs(&state.db)
         .unwrap_or_else(|e| crate::services::session_usage::SessionSyncResult {
-            imported: 0, skipped: 0, files_scanned: 0, errors: vec![e.to_string()],
+            imported: 0,
+            skipped: 0,
+            files_scanned: 0,
+            errors: vec![e.to_string()],
         });
 
     match crate::services::session_usage_codex::sync_codex_usage(&state.db) {
-        Ok(r) => { result.imported += r.imported; result.skipped += r.skipped; result.files_scanned += r.files_scanned; result.errors.extend(r.errors); }
-        Err(e) => { result.errors.push(format!("Codex: {e}")); }
+        Ok(r) => {
+            result.imported += r.imported;
+            result.skipped += r.skipped;
+            result.files_scanned += r.files_scanned;
+            result.errors.extend(r.errors);
+        }
+        Err(e) => {
+            result.errors.push(format!("Codex: {e}"));
+        }
     }
     match crate::services::session_usage_gemini::sync_gemini_usage(&state.db) {
-        Ok(r) => { result.imported += r.imported; result.skipped += r.skipped; result.files_scanned += r.files_scanned; result.errors.extend(r.errors); }
-        Err(e) => { result.errors.push(format!("Gemini: {e}")); }
+        Ok(r) => {
+            result.imported += r.imported;
+            result.skipped += r.skipped;
+            result.files_scanned += r.files_scanned;
+            result.errors.extend(r.errors);
+        }
+        Err(e) => {
+            result.errors.push(format!("Gemini: {e}"));
+        }
     }
     match crate::services::session_usage_opencode::sync_opencode_usage(&state.db) {
-        Ok(r) => { result.imported += r.imported; result.skipped += r.skipped; result.files_scanned += r.files_scanned; result.errors.extend(r.errors); }
-        Err(e) => { result.errors.push(format!("OpenCode: {e}")); }
+        Ok(r) => {
+            result.imported += r.imported;
+            result.skipped += r.skipped;
+            result.files_scanned += r.files_scanned;
+            result.errors.extend(r.errors);
+        }
+        Err(e) => {
+            result.errors.push(format!("OpenCode: {e}"));
+        }
     }
 
     ok(result)
 }
 
-async fn get_data_sources(
-    State((state, _)): State<Shared>,
-) -> Json<serde_json::Value> {
+async fn get_data_sources(State((state, _)): State<Shared>) -> Json<serde_json::Value> {
     match crate::services::session_usage::get_data_source_breakdown(&state.db) {
         Ok(s) => ok(s),
         Err(e) => err(e),

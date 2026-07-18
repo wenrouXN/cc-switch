@@ -14,6 +14,7 @@ mod deeplink;
 mod error;
 mod gemini_config;
 mod gemini_mcp;
+mod headless;
 pub mod hermes_config;
 mod init_status;
 mod lightweight;
@@ -32,7 +33,6 @@ mod services;
 mod session_manager;
 mod settings;
 mod store;
-mod headless;
 mod web;
 
 mod tray;

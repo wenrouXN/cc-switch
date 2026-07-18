@@ -3,9 +3,9 @@
 //! Mirrors `commands/failover.rs` exactly.
 
 use axum::{extract::State, routing::post, Json, Router};
-use std::str::FromStr;
 use serde::Deserialize;
 use serde_json::json;
+use std::str::FromStr;
 use std::sync::Arc;
 
 use crate::store::AppState;
@@ -21,7 +21,10 @@ pub fn routes() -> Router<Shared> {
         .route("/available", axum::routing::get(get_available))
         .route("/enabled", axum::routing::get(get_enabled))
         .route("/enabled", post(set_enabled))
-        .route("/health/:provider_id", axum::routing::get(get_provider_health))
+        .route(
+            "/health/:provider_id",
+            axum::routing::get(get_provider_health),
+        )
         .route("/health", post(reset_circuit_breaker))
         .route("/circuit-breaker/config", axum::routing::get(get_cb_config))
         .route("/circuit-breaker/config", post(update_cb_config))
@@ -79,10 +82,7 @@ async fn add_to_queue(
     State((state, _)): State<Shared>,
     Json(req): Json<QueueItemRequest>,
 ) -> Json<serde_json::Value> {
-    match state
-        .db
-        .add_to_failover_queue(&req.app, &req.provider_id)
-    {
+    match state.db.add_to_failover_queue(&req.app, &req.provider_id) {
         Ok(()) => ok(true),
         Err(e) => err(e.to_string()),
     }
@@ -204,15 +204,17 @@ async fn reset_circuit_breaker(
     State((state, _)): State<Shared>,
     Json(req): Json<HealthRequest>,
 ) -> Json<serde_json::Value> {
-    match state.db.reset_provider_health(&req.provider_id, &req.app_type).await {
+    match state
+        .db
+        .reset_provider_health(&req.provider_id, &req.app_type)
+        .await
+    {
         Ok(()) => ok(true),
         Err(e) => err(e.to_string()),
     }
 }
 
-async fn get_cb_config(
-    State((state, _)): State<Shared>,
-) -> Json<serde_json::Value> {
+async fn get_cb_config(State((state, _)): State<Shared>) -> Json<serde_json::Value> {
     match state.db.get_circuit_breaker_config().await {
         Ok(config) => ok(config),
         Err(e) => err(e.to_string()),

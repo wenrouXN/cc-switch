@@ -27,8 +27,12 @@ export const providersApi = {
     return get(`/providers/current?app=${appId}`);
   },
 
-  async add(provider: Provider, appId: AppId): Promise<boolean> {
-    return post("/providers", { provider, app: appId });
+  async add(
+    provider: Provider,
+    appId: AppId,
+    addToLive?: boolean,
+  ): Promise<boolean> {
+    return post("/providers", { provider, app: appId, addToLive });
   },
 
   async update(
@@ -52,8 +56,7 @@ export const providersApi = {
   },
 
   async switch(id: string, appId: AppId): Promise<SwitchResult> {
-    await post(`/providers/${id}/switch?app=${encodeURIComponent(appId)}`, {});
-    return { warnings: [] };
+    return post(`/providers/${id}/switch?app=${encodeURIComponent(appId)}`, {});
   },
 
   async importDefault(appId: AppId): Promise<boolean> {

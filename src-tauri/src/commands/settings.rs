@@ -10,7 +10,7 @@ struct UpdateDownloadProgress {
     total: Option<u64>,
 }
 
-fn merge_settings_for_save(
+pub(crate) fn merge_settings_for_save(
     mut incoming: crate::settings::AppSettings,
     existing: &crate::settings::AppSettings,
 ) -> crate::settings::AppSettings {
@@ -63,6 +63,13 @@ pub async fn save_settings(
     state: tauri::State<'_, crate::store::AppState>,
     settings: crate::settings::AppSettings,
 ) -> Result<bool, String> {
+    save_settings_shared(state.inner(), settings).await
+}
+
+pub(crate) async fn save_settings_shared(
+    state: &crate::store::AppState,
+    settings: crate::settings::AppSettings,
+) -> Result<bool, String> {
     let existing = crate::settings::get_settings();
     let merged = merge_settings_for_save(settings, &existing);
     let unify_codex_changed =
@@ -78,9 +85,7 @@ pub async fn save_settings(
         // 迁走而新会话仍写 openai 桶；关闭=会话还原而 live 仍写 custom）。
         // 报错让前端 saved=false 短路还原；回滚是整次保存的事务语义
         // （本开关的保存只携带开关相关字段）。
-        if let Err(err) =
-            crate::services::provider::reapply_current_codex_official_live(state.inner())
-        {
+        if let Err(err) = crate::services::provider::reapply_current_codex_official_live(state) {
             log::warn!("统一 Codex 会话历史开关变更后重写 live 配置失败，回滚设置: {err}");
             if let Err(rollback_err) = crate::settings::update_settings(existing) {
                 log::error!("回滚统一会话开关设置失败: {rollback_err}");
@@ -94,7 +99,7 @@ pub async fn save_settings(
             // 后台执行存量迁移（openai 桶 → custom 桶；仅当用户勾选了迁入既有
             // 会话，函数内部自门控）。大会话目录可能要读数秒，不能阻塞设置保存；
             // 失败时不写完成标记，下次启动自动重试。
-            tauri::async_runtime::spawn_blocking(|| {
+            tokio::task::spawn_blocking(|| {
                 match crate::codex_history_migration::maybe_migrate_codex_official_history_to_unified_bucket() {
                     Ok(outcome) => {
                         if let Some(reason) = outcome.skipped_reason {

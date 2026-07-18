@@ -53,14 +53,14 @@ struct DeleteReq {
     source_path: Option<String>,
 }
 
-async fn delete_session(
-    Json(req): Json<DeleteReq>,
-) -> Json<serde_json::Value> {
+async fn delete_session(Json(req): Json<DeleteReq>) -> Json<serde_json::Value> {
     match crate::commands::session_manager::delete_session(
         req.provider_id,
         req.session_id.unwrap_or_default(),
         req.source_path.unwrap_or_default(),
-    ).await {
+    )
+    .await
+    {
         Ok(_) => ok(true),
         Err(e) => err(e),
     }

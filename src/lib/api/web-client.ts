@@ -14,14 +14,33 @@ export function clearAuthToken() {
   localStorage.removeItem("cc_switch_token");
 }
 
-// Auto-set token on module load so the app never shows the login screen.
-if (!getAuthToken()) {
-  setAuthToken("no-auth");
+let loginInFlight: Promise<boolean> | null = null;
+
+async function promptForWebLogin(): Promise<boolean> {
+  if (loginInFlight) return loginInFlight;
+  loginInFlight = (async () => {
+    const password = window.prompt("CC Switch Web password");
+    if (password === null) return false;
+    const response = await fetch(`${API_BASE_URL}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password }),
+    });
+    if (!response.ok) return false;
+    const payload = (await response.json()) as ApiEnvelope<{ token: string }>;
+    if (!payload.success || !payload.data?.token) return false;
+    setAuthToken(payload.data.token);
+    return true;
+  })().finally(() => {
+    loginInFlight = null;
+  });
+  return loginInFlight;
 }
 
 async function fetchWithAuth(
   url: string,
   options: RequestInit = {},
+  allowLoginRetry = true,
 ): Promise<Response> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -67,6 +86,9 @@ async function fetchWithAuth(
 
   if (response.status === 401) {
     clearAuthToken();
+    if (allowLoginRetry && url !== "/auth/login" && (await promptForWebLogin())) {
+      return fetchWithAuth(url, options, false);
+    }
     window.dispatchEvent(new CustomEvent("auth:expired"));
     throw new Error("Unauthorized");
   }

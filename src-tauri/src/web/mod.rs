@@ -1,11 +1,17 @@
 pub mod handlers;
 pub mod middleware;
+pub mod redaction;
 pub mod routes;
 
-use axum::{http::StatusCode, response::IntoResponse, routing::get, Router};
+use axum::{
+    http::{header, HeaderValue, Method, StatusCode},
+    response::IntoResponse,
+    routing::{get, post},
+    Router,
+};
 use std::path::PathBuf;
 use std::sync::Arc;
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::services::{ServeDir, ServeFile};
 
 use crate::store::AppState;
@@ -48,12 +54,7 @@ impl WsState {
 }
 
 pub fn create_router(app_state: Arc<AppState>, ws_state: Arc<WsState>) -> Router {
-    let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any)
-        .allow_credentials(false);
-
+    let cors = cors_layer();
     let shared = (app_state, ws_state);
 
     let protected = Router::new()
@@ -68,7 +69,11 @@ pub fn create_router(app_state: Arc<AppState>, ws_state: Arc<WsState>) -> Router
         .nest("/hermes", routes::hermes::routes())
         .nest("/openclaw", routes::openclaw::routes())
         .nest("/usage", routes::usage::routes())
-        .nest("/universal-providers", routes::providers::universal_routes())
+        .nest(
+            "/universal-providers",
+            routes::providers::universal_routes(),
+        )
+        .route("/auth/change-password", post(routes::auth::change_password))
         .layer(axum::middleware::from_fn(middleware::auth::auth_middleware))
         .with_state(shared.clone());
 
@@ -92,17 +97,35 @@ pub fn create_router(app_state: Arc<AppState>, ws_state: Arc<WsState>) -> Router
     };
 
     Router::new()
-        .nest("/api/v1", auth_routes.merge(protected))
+        .nest(
+            "/api/v1",
+            auth_routes
+                .merge(protected)
+                .route("/health", get(health_check)),
+        )
         .route("/health", get(health_check))
         .merge(ws_routes)
         .fallback(static_service)
         .layer(cors)
 }
 
+fn cors_layer() -> CorsLayer {
+    let configured = std::env::var("CC_SWITCH_WEB_CORS_ORIGINS")
+        .unwrap_or_else(|_| "http://127.0.0.1:5173,http://localhost:5173".to_string());
+    let origins: Vec<HeaderValue> = configured
+        .split(',')
+        .filter_map(|origin| origin.trim().parse().ok())
+        .collect();
+
+    CorsLayer::new()
+        .allow_origin(AllowOrigin::list(origins))
+        .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
+        .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE])
+        .allow_credentials(false)
+}
+
 // ── Embedded asset handler (SPA fallback to index.html) ─────────────
-async fn serve_embedded(
-    req: axum::extract::Request,
-) -> impl IntoResponse {
+async fn serve_embedded(req: axum::extract::Request) -> impl IntoResponse {
     let path = req.uri().path().trim_start_matches('/');
 
     // Try exact file first

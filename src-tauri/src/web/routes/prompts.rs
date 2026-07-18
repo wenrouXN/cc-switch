@@ -34,7 +34,9 @@ struct AppQuery {
     #[serde(default = "default_app")]
     app: String,
 }
-fn default_app() -> String { "claude".into() }
+fn default_app() -> String {
+    "claude".into()
+}
 
 async fn get_prompts(
     State((state, _)): State<Shared>,
@@ -50,8 +52,13 @@ async fn upsert_prompt(
     State((state, _)): State<Shared>,
     Json(mut body): Json<serde_json::Value>,
 ) -> Json<serde_json::Value> {
-    let app = body.get("app").and_then(|v| v.as_str()).unwrap_or("claude").to_string();
-    let prompt_val = body.as_object_mut()
+    let app = body
+        .get("app")
+        .and_then(|v| v.as_str())
+        .unwrap_or("claude")
+        .to_string();
+    let prompt_val = body
+        .as_object_mut()
         .and_then(|m| m.remove("prompt"))
         .unwrap_or(body.clone());
     match serde_json::from_value::<crate::prompt::Prompt>(prompt_val) {

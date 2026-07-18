@@ -1,6 +1,12 @@
-//! Auth routes — no password required.
+//! Headless web login and password-management routes.
 
-use axum::{routing::post, Json, Router};
+use axum::{
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    routing::post,
+    Json, Router,
+};
+use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
 
@@ -10,15 +16,49 @@ use crate::web::WsState;
 type Shared = (Arc<AppState>, Arc<WsState>);
 
 pub fn routes() -> Router<Shared> {
-    Router::new()
-        .route("/login", post(login))
-        .route("/change-password", post(change_password))
+    Router::new().route("/login", post(login))
 }
 
-async fn login() -> Json<serde_json::Value> {
-    Json(json!({"success": true, "data": {"token": "no-auth", "must_change": false}}))
+#[derive(Deserialize)]
+struct LoginRequest {
+    password: String,
 }
 
-async fn change_password() -> Json<serde_json::Value> {
-    Json(json!({"success": true}))
+async fn login(Json(request): Json<LoginRequest>) -> Response {
+    match crate::web::middleware::auth::login(&request.password) {
+        Ok(token) => Json(json!({
+            "success": true,
+            "data": {
+                "token": token,
+                "mustChange": request.password == crate::web::middleware::auth::default_password()
+            }
+        }))
+        .into_response(),
+        Err(error) => (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"success": false, "error": error})),
+        )
+            .into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangePasswordRequest {
+    current_password: String,
+    new_password: String,
+}
+
+pub async fn change_password(Json(request): Json<ChangePasswordRequest>) -> Response {
+    match crate::web::middleware::auth::change_password(
+        &request.current_password,
+        &request.new_password,
+    ) {
+        Ok(token) => Json(json!({"success": true, "data": {"token": token}})).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"success": false, "error": error})),
+        )
+            .into_response(),
+    }
 }

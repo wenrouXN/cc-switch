@@ -96,7 +96,12 @@ async fn list_providers(
         Err(e) => return err(e.to_string()),
     };
     match ProviderService::list(&state, app_type) {
-        Ok(providers) => ok(providers),
+        Ok(mut providers) => {
+            for provider in providers.values_mut() {
+                crate::web::redaction::redact_sensitive_values(&mut provider.settings_config);
+            }
+            ok(providers)
+        }
         Err(e) => err(e.to_string()),
     }
 }
@@ -121,7 +126,10 @@ async fn get_one(
     Query(q): Query<AppQuery>,
 ) -> Json<serde_json::Value> {
     match state.db.get_provider_by_id(&id, &q.app) {
-        Ok(Some(provider)) => ok(provider),
+        Ok(Some(mut provider)) => {
+            crate::web::redaction::redact_sensitive_values(&mut provider.settings_config);
+            ok(provider)
+        }
         Ok(None) => err(format!("Provider not found: {}", id)),
         Err(e) => err(e.to_string()),
     }
@@ -160,7 +168,16 @@ async fn update_provider(
         .as_deref()
         .filter(|s| !s.is_empty())
         .unwrap_or(id.as_str());
-    match ProviderService::update(&state, app_type, Some(original), body.provider) {
+    let mut provider = body.provider;
+    match state.db.get_provider_by_id(original, &body.app) {
+        Ok(Some(existing)) => crate::web::redaction::preserve_masked_sensitive_values(
+            &mut provider.settings_config,
+            &existing.settings_config,
+        ),
+        Ok(None) => return err(format!("Provider not found: {}", original)),
+        Err(e) => return err(e.to_string()),
+    }
+    match ProviderService::update(&state, app_type, Some(original), provider) {
         Ok(v) => ok(v),
         Err(e) => err(e.to_string()),
     }

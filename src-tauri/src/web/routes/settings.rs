@@ -36,8 +36,14 @@ pub fn routes() -> Router<Shared> {
         .route("/app-config-dir-override", get(get_override))
         .route("/app-config-dir-override", post(set_override))
         .route("/apply-claude-plugin", post(apply_claude_plugin))
-        .route("/claude-onboarding-skip", post(apply_claude_onboarding_skip))
-        .route("/claude-onboarding-skip", delete(clear_claude_onboarding_skip))
+        .route(
+            "/claude-onboarding-skip",
+            post(apply_claude_onboarding_skip),
+        )
+        .route(
+            "/claude-onboarding-skip",
+            delete(clear_claude_onboarding_skip),
+        )
         .route("/webdav/settings", post(webdav_save_settings))
         .route("/webdav/test", post(webdav_test))
         .route("/webdav/upload", post(webdav_upload))
@@ -67,8 +73,8 @@ async fn save_settings(
     Json(settings): Json<serde_json::Value>,
 ) -> Json<serde_json::Value> {
     match serde_json::from_value::<crate::settings::AppSettings>(settings) {
-        Ok(s) => match crate::settings::update_settings(s) {
-            Ok(()) => ok(true),
+        Ok(s) => match crate::commands::save_settings_shared(state.as_ref(), s).await {
+            Ok(saved) => ok(saved),
             Err(e) => err(e),
         },
         Err(e) => err(format!("Invalid settings: {}", e)),
@@ -82,9 +88,7 @@ async fn list_backups() -> Json<serde_json::Value> {
     }
 }
 
-async fn create_backup(
-    State((state, _)): State<Shared>,
-) -> Json<serde_json::Value> {
+async fn create_backup(State((state, _)): State<Shared>) -> Json<serde_json::Value> {
     match state.db.backup_database_file() {
         Ok(Some(path)) => ok(path.to_string_lossy().to_string()),
         Ok(None) => ok(""),
@@ -127,9 +131,7 @@ async fn restore_backup(
     }
 }
 
-async fn get_log_config(
-    State((state, _)): State<Shared>,
-) -> Json<serde_json::Value> {
+async fn get_log_config(State((state, _)): State<Shared>) -> Json<serde_json::Value> {
     match state.db.get_log_config() {
         Ok(c) => ok(c),
         Err(e) => err(e),
@@ -146,9 +148,7 @@ async fn set_log_config(
     }
 }
 
-async fn get_optimizer_config(
-    State((state, _)): State<Shared>,
-) -> Json<serde_json::Value> {
+async fn get_optimizer_config(State((state, _)): State<Shared>) -> Json<serde_json::Value> {
     match state.db.get_optimizer_config() {
         Ok(c) => ok(c),
         Err(e) => err(e),
@@ -165,9 +165,7 @@ async fn set_optimizer_config(
     }
 }
 
-async fn get_rectifier_config(
-    State((state, _)): State<Shared>,
-) -> Json<serde_json::Value> {
+async fn get_rectifier_config(State((state, _)): State<Shared>) -> Json<serde_json::Value> {
     match state.db.get_rectifier_config() {
         Ok(c) => ok(c),
         Err(e) => err(e),
@@ -184,9 +182,7 @@ async fn set_rectifier_config(
     }
 }
 
-async fn sync_providers_live(
-    State((state, _)): State<Shared>,
-) -> Json<serde_json::Value> {
+async fn sync_providers_live(State((state, _)): State<Shared>) -> Json<serde_json::Value> {
     match crate::services::ProviderService::sync_current_to_live(&state) {
         Ok(()) => ok(true),
         Err(e) => err(e),
@@ -218,9 +214,11 @@ struct SetOverrideReq {
     path: Option<String>,
 }
 
-async fn set_override(Json(_req): Json<SetOverrideReq>) -> Json<serde_json::Value> {
-    // Desktop-only: set_app_config_dir_to_store needs AppHandle
-    ok(true)
+async fn set_override(Json(req): Json<SetOverrideReq>) -> Json<serde_json::Value> {
+    let requested = req.path.as_deref().unwrap_or("<default>");
+    err(format!(
+        "Headless WebUI does not support changing the app config directory override (requested: {requested}). Use the desktop app instead."
+    ))
 }
 
 #[derive(Deserialize)]

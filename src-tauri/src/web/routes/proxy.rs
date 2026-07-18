@@ -32,14 +32,8 @@ pub fn routes() -> Router<Shared> {
         .route("/config/global", post(update_global_config))
         .route("/config/app", get(get_app_config))
         .route("/config/app", post(update_app_config))
-        .route(
-            "/default-cost-multiplier",
-            get(get_default_cost_multiplier),
-        )
-        .route(
-            "/default-cost-multiplier",
-            put(set_default_cost_multiplier),
-        )
+        .route("/default-cost-multiplier", get(get_default_cost_multiplier))
+        .route("/default-cost-multiplier", put(set_default_cost_multiplier))
         .route("/pricing-model-source", get(get_pricing_model_source))
         .route("/pricing-model-source", put(set_pricing_model_source))
 }
@@ -75,18 +69,14 @@ fn err(msg: impl ToString) -> Json<serde_json::Value> {
 
 // ---- handlers ----
 
-async fn get_status(
-    State((state, _)): State<Shared>,
-) -> Json<serde_json::Value> {
+async fn get_status(State((state, _)): State<Shared>) -> Json<serde_json::Value> {
     match state.proxy_service.get_status().await {
         Ok(status) => ok(status),
         Err(e) => err(e),
     }
 }
 
-async fn start(
-    State((state, ws)): State<Shared>,
-) -> Json<serde_json::Value> {
+async fn start(State((state, ws)): State<Shared>) -> Json<serde_json::Value> {
     match state.proxy_service.start().await {
         Ok(info) => {
             broadcast(&ws, "proxy.started", json!({"port": info.port}));
@@ -96,9 +86,7 @@ async fn start(
     }
 }
 
-async fn stop(
-    State((state, ws)): State<Shared>,
-) -> Json<serde_json::Value> {
+async fn stop(State((state, ws)): State<Shared>) -> Json<serde_json::Value> {
     match state.proxy_service.get_takeover_status().await {
         Ok(t) if t.claude || t.codex || t.gemini || t.opencode || t.openclaw => {
             return err("仍有应用处于代理接管状态，请先在设置中关闭对应应用接管后再停止本地路由。");
@@ -115,9 +103,7 @@ async fn stop(
     }
 }
 
-async fn stop_with_restore(
-    State((state, ws)): State<Shared>,
-) -> Json<serde_json::Value> {
+async fn stop_with_restore(State((state, ws)): State<Shared>) -> Json<serde_json::Value> {
     match state.proxy_service.stop_with_restore().await {
         Ok(()) => {
             broadcast(&ws, "proxy.stopped", json!({"restored": true}));
@@ -155,9 +141,7 @@ async fn switch_provider(
     }
 }
 
-async fn get_takeover_status(
-    State((state, _)): State<Shared>,
-) -> Json<serde_json::Value> {
+async fn get_takeover_status(State((state, _)): State<Shared>) -> Json<serde_json::Value> {
     match state.proxy_service.get_takeover_status().await {
         Ok(status) => ok(status),
         Err(e) => err(e),
@@ -185,9 +169,7 @@ async fn set_takeover(
     }
 }
 
-async fn get_config(
-    State((state, _)): State<Shared>,
-) -> Json<serde_json::Value> {
+async fn get_config(State((state, _)): State<Shared>) -> Json<serde_json::Value> {
     match state.proxy_service.get_config().await {
         Ok(c) => ok(c),
         Err(e) => err(e),
@@ -204,9 +186,7 @@ async fn update_config(
     }
 }
 
-async fn get_global_config(
-    State((state, _)): State<Shared>,
-) -> Json<serde_json::Value> {
+async fn get_global_config(State((state, _)): State<Shared>) -> Json<serde_json::Value> {
     match state.db.get_global_proxy_config().await {
         Ok(c) => ok(c),
         Err(e) => err(e.to_string()),
@@ -257,7 +237,10 @@ async fn get_default_cost_multiplier(
     State((state, _)): State<Shared>,
     Query(params): Query<HashMap<String, String>>,
 ) -> Json<serde_json::Value> {
-    let app = params.get("app").cloned().unwrap_or_else(|| "claude".into());
+    let app = params
+        .get("app")
+        .cloned()
+        .unwrap_or_else(|| "claude".into());
     match state.db.get_default_cost_multiplier(&app).await {
         Ok(v) => ok(v),
         Err(e) => err(e.to_string()),
@@ -269,10 +252,19 @@ async fn set_default_cost_multiplier(
     Query(params): Query<HashMap<String, String>>,
     Json(payload): Json<StringValue>,
 ) -> Json<serde_json::Value> {
-    if payload.value.trim().parse::<f64>().map(|v| v < 0.0).unwrap_or(true) {
+    if payload
+        .value
+        .trim()
+        .parse::<f64>()
+        .map(|v| v < 0.0)
+        .unwrap_or(true)
+    {
         return err("Invalid multiplier");
     }
-    let app = params.get("app").cloned().unwrap_or_else(|| "claude".into());
+    let app = params
+        .get("app")
+        .cloned()
+        .unwrap_or_else(|| "claude".into());
     match state
         .db
         .set_default_cost_multiplier(&app, payload.value.trim())
@@ -287,7 +279,10 @@ async fn get_pricing_model_source(
     State((state, _)): State<Shared>,
     Query(params): Query<HashMap<String, String>>,
 ) -> Json<serde_json::Value> {
-    let app = params.get("app").cloned().unwrap_or_else(|| "claude".into());
+    let app = params
+        .get("app")
+        .cloned()
+        .unwrap_or_else(|| "claude".into());
     match state.db.get_pricing_model_source(&app).await {
         Ok(v) => ok(v),
         Err(e) => err(e.to_string()),
@@ -303,7 +298,10 @@ async fn set_pricing_model_source(
     if value != "request" && value != "response" {
         return err("Invalid pricing model source");
     }
-    let app = params.get("app").cloned().unwrap_or_else(|| "claude".into());
+    let app = params
+        .get("app")
+        .cloned()
+        .unwrap_or_else(|| "claude".into());
     match state.db.set_pricing_model_source(&app, value).await {
         Ok(()) => ok(true),
         Err(e) => err(e.to_string()),

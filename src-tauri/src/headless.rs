@@ -30,23 +30,41 @@ pub fn run_headless() -> ! {
 
     // Build the full desktop AppState (Database + ProxyService)
     // Database::init() uses the default ~/.cc-switch/ path
-    let db = Arc::new(
-        crate::database::Database::init().expect("Failed to initialize database"),
-    );
+    let db = Arc::new(crate::database::Database::init().expect("Failed to initialize database"));
     let app_state = Arc::new(AppState::new(db));
 
     let pw_path = crate::config::get_app_config_dir().join("web_password");
     let password = if pw_path.exists() {
-        std::fs::read_to_string(&pw_path).unwrap_or_default().trim().to_string()
+        let stored = std::fs::read_to_string(&pw_path)
+            .expect("Failed to read web_password")
+            .trim()
+            .to_string();
+        if stored.is_empty() {
+            crate::web::middleware::auth::default_password().to_string()
+        } else {
+            stored
+        }
     } else {
-        "admin".to_string()
+        crate::web::middleware::auth::default_password().to_string()
     };
-    println!();
-    println!("============================================================");
-    println!("[cc-switch] WEB_PASSWORD (default password for web login):");
-    println!("Default: admin (must change on first login)");
-    println!("============================================================");
-    println!();
+    let no_auth = std::env::var("CC_SWITCH_WEB_NO_AUTH")
+        .ok()
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    if bind_all && !no_auth && password == crate::web::middleware::auth::default_password() {
+        panic!(
+            "Refusing CC_SWITCH_WEB_BIND_ALL=true with the default web password. \
+             Set a non-default password in {} before exposing the server.",
+            pw_path.display()
+        );
+    }
+    if no_auth {
+        eprintln!(
+            "[cc-switch] WARNING: CC_SWITCH_WEB_NO_AUTH=1 disables HTTP authentication; use only for local development."
+        );
+    }
+    crate::web::middleware::auth::init(pw_path, password, no_auth)
+        .expect("Failed to initialize web authentication");
 
     let (ws_state, _rx) = {
         let (tx, rx) = tokio::sync::broadcast::channel(100);
@@ -60,9 +78,7 @@ pub fn run_headless() -> ! {
             .await
             .expect("Failed to bind");
         println!("Listening on {}", addr);
-        axum::serve(listener, router)
-            .await
-            .expect("Server failed");
+        axum::serve(listener, router).await.expect("Server failed");
     });
 
     std::process::exit(0);
