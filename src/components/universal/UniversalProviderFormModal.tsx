@@ -17,6 +17,7 @@ import {
   type UniversalProviderPreset,
 } from "@/config/universalProviderPresets";
 import { deepClone } from "@/utils/deepClone";
+import { generateUUID } from "@/utils/uuid";
 
 interface UniversalProviderFormModalProps {
   isOpen: boolean;
@@ -208,7 +209,7 @@ requires_openai_auth = true`;
         }
       : createUniversalProviderFromPreset(
           selectedPreset || universalProviderPresets[0],
-          crypto.randomUUID(),
+          generateUUID(),
           baseUrl.trim(),
           apiKey.trim(),
           name.trim(),
@@ -267,7 +268,7 @@ requires_openai_auth = true`;
         }
       : createUniversalProviderFromPreset(
           selectedPreset || universalProviderPresets[0],
-          crypto.randomUUID(),
+          generateUUID(),
           baseUrl.trim(),
           apiKey.trim(),
           name.trim(),
