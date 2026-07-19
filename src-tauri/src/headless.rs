@@ -11,6 +11,11 @@ use crate::web::{create_router, WsState};
 pub fn run_headless() -> ! {
     crate::panic_hook::setup_panic_hook();
 
+    // Headless skips Tauri `.setup()`, which is where the desktop path installs the
+    // rustls CryptoProvider. Without this, the first HTTPS outbound (Claude
+    // /v1/messages forward via tokio-rustls) panics and the client sees an empty reply.
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
     let port: u16 = std::env::var("CC_SWITCH_WEB_PORT")
         .ok()
         .and_then(|p| p.parse().ok())
