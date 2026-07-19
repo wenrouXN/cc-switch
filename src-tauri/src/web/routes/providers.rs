@@ -208,8 +208,14 @@ async fn switch(
         Err(e) => return err(e.to_string()),
     };
     match ProviderService::switch(&state, app_type, &id) {
-        Ok(result) => {
-            let _ = state.proxy_service.switch_proxy_target(&q.app, &id).await;
+        Ok(mut result) => {
+            // Align proxy in-memory target with live/DB switch. Surface failures as
+            // warnings instead of silently leaving the proxy on a stale provider.
+            if let Err(e) = state.proxy_service.switch_proxy_target(&q.app, &id).await {
+                result
+                    .warnings
+                    .push(format!("proxy target update failed: {e}"));
+            }
             ok(result)
         }
         Err(e) => err(e.to_string()),
@@ -378,6 +384,8 @@ async fn hermes_live_ids() -> Json<serde_json::Value> {
 }
 
 // ---- Universal Provider routes ----
+// Thin shell over ProviderService (same as commands/provider.rs). Never db-only
+// delete/upsert — delete must clear universal-{app}-{id} children.
 
 pub fn universal_routes() -> Router<Shared> {
     Router::new()
@@ -388,10 +396,31 @@ pub fn universal_routes() -> Router<Shared> {
         .route("/:id/sync", post(sync_universal))
 }
 
+fn redact_universal_provider(
+    provider: crate::provider::UniversalProvider,
+) -> crate::provider::UniversalProvider {
+    let Ok(mut value) = serde_json::to_value(&provider) else {
+        return provider;
+    };
+    crate::web::redaction::redact_sensitive_values(&mut value);
+    serde_json::from_value(value).unwrap_or(provider)
+}
+
+fn is_mask_or_empty_secret(value: &str) -> bool {
+    let trimmed = value.trim();
+    trimmed.is_empty() || trimmed.contains("***")
+}
+
 async fn list_universal(State((state, _)): State<Shared>) -> Json<serde_json::Value> {
-    match state.db.get_all_universal_providers() {
-        Ok(providers) => ok(providers),
-        Err(e) => err(e),
+    match ProviderService::list_universal(&state) {
+        Ok(providers) => {
+            let redacted = providers
+                .into_iter()
+                .map(|(id, provider)| (id, redact_universal_provider(provider)))
+                .collect::<std::collections::HashMap<_, _>>();
+            ok(redacted)
+        }
+        Err(e) => err(e.to_string()),
     }
 }
 
@@ -399,19 +428,29 @@ async fn get_universal(
     State((state, _)): State<Shared>,
     Path(id): Path<String>,
 ) -> Json<serde_json::Value> {
-    match state.db.get_universal_provider(&id) {
-        Ok(provider) => ok(provider),
-        Err(e) => err(e),
+    match ProviderService::get_universal(&state, &id) {
+        Ok(Some(provider)) => ok(redact_universal_provider(provider)),
+        Ok(None) => err(format!("Universal provider not found: {id}")),
+        Err(e) => err(e.to_string()),
     }
 }
 
 async fn upsert_universal(
     State((state, _)): State<Shared>,
-    Json(provider): Json<crate::provider::UniversalProvider>,
+    Json(mut provider): Json<crate::provider::UniversalProvider>,
 ) -> Json<serde_json::Value> {
-    match state.db.save_universal_provider(&provider) {
-        Ok(()) => ok(true),
-        Err(e) => err(e),
+    // Preserve existing apiKey when the client sends empty / masked value
+    // (GET responses are redacted with ***).
+    if is_mask_or_empty_secret(&provider.api_key) {
+        match ProviderService::get_universal(&state, &provider.id) {
+            Ok(Some(existing)) => provider.api_key = existing.api_key,
+            Ok(None) => {}
+            Err(e) => return err(e.to_string()),
+        }
+    }
+    match ProviderService::upsert_universal(&state, provider) {
+        Ok(v) => ok(v),
+        Err(e) => err(e.to_string()),
     }
 }
 
@@ -419,9 +458,9 @@ async fn delete_universal(
     State((state, _)): State<Shared>,
     Path(id): Path<String>,
 ) -> Json<serde_json::Value> {
-    match state.db.delete_universal_provider(&id) {
-        Ok(_) => ok(true),
-        Err(e) => err(e),
+    match ProviderService::delete_universal(&state, &id) {
+        Ok(v) => ok(v),
+        Err(e) => err(e.to_string()),
     }
 }
 
@@ -430,7 +469,7 @@ async fn sync_universal(
     Path(id): Path<String>,
 ) -> Json<serde_json::Value> {
     match ProviderService::sync_universal_to_apps(&state, &id) {
-        Ok(_) => ok(true),
-        Err(e) => err(e),
+        Ok(v) => ok(v),
+        Err(e) => err(e.to_string()),
     }
 }

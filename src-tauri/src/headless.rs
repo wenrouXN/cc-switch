@@ -75,10 +75,37 @@ pub fn run_headless() -> ! {
         let (tx, rx) = tokio::sync::broadcast::channel(100);
         (Arc::new(WsState::new(tx)), rx)
     };
-    let router = create_router(app_state, ws_state);
+    let router = create_router(app_state.clone(), ws_state);
 
     let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
     rt.block_on(async {
+        // Auto-start local proxy when any app has proxy/takeover enabled in DB.
+        // Without this, headless restarts leave :15721 down until a manual POST /proxy/start.
+        let apps = ["claude", "codex", "gemini", "opencode", "openclaw"];
+        let mut should_start = false;
+        for app in apps {
+            match app_state.db.get_proxy_config_for_app(app).await {
+                Ok(cfg) if cfg.enabled => {
+                    should_start = true;
+                    break;
+                }
+                _ => {}
+            }
+        }
+        if should_start {
+            match app_state.proxy_service.start().await {
+                Ok(info) => {
+                    eprintln!(
+                        "[cc-switch] auto-started local proxy on {}:{}",
+                        info.address, info.port
+                    );
+                }
+                Err(e) => {
+                    eprintln!("[cc-switch] WARNING: auto-start proxy failed: {e}");
+                }
+            }
+        }
+
         let listener = tokio::net::TcpListener::bind(addr)
             .await
             .expect("Failed to bind");

@@ -76,22 +76,24 @@ impl ProviderRouter {
                     circuit_open_count += 1;
                 }
             }
-        } else {
-            // 故障转移关闭：仅使用当前供应商，跳过熔断器检查
-            let current_id = AppType::from_str(app_type)
-                .ok()
-                .and_then(|app_enum| {
-                    crate::settings::get_effective_current_provider(&self.db, &app_enum)
-                        .ok()
-                        .flatten()
-                })
-                .or_else(|| self.db.get_current_provider(app_type).ok().flatten());
 
-            if let Some(current_id) = current_id {
-                if let Some(current) = self.db.get_provider_by_id(&current_id, app_type)? {
+            // Guard: FO enabled but queue empty/orphaned → fall back to current
+            // provider so Claude/Codex proxy does not hard-fail with
+            // NoProvidersConfigured while UI still shows a current selection.
+            if result.is_empty() && total_providers == 0 {
+                log::warn!(
+                    "[{app_type}] [FO-006] failover queue empty while auto_failover is on; falling back to current provider"
+                );
+                if let Some(current) = Self::resolve_current_provider(&self.db, app_type)? {
                     total_providers = 1;
                     result.push(current);
                 }
+            }
+        } else {
+            // 故障转移关闭：仅使用当前供应商，跳过熔断器检查
+            if let Some(current) = Self::resolve_current_provider(&self.db, app_type)? {
+                total_providers = 1;
+                result.push(current);
             }
         }
 
@@ -227,6 +229,26 @@ impl ProviderRouter {
         } else {
             None
         }
+    }
+
+    /// Resolve the effective current provider for an app (settings override → DB).
+    fn resolve_current_provider(
+        db: &Database,
+        app_type: &str,
+    ) -> Result<Option<Provider>, AppError> {
+        let current_id = AppType::from_str(app_type)
+            .ok()
+            .and_then(|app_enum| {
+                crate::settings::get_effective_current_provider(db, &app_enum)
+                    .ok()
+                    .flatten()
+            })
+            .or_else(|| db.get_current_provider(app_type).ok().flatten());
+
+        if let Some(current_id) = current_id {
+            return db.get_provider_by_id(&current_id, app_type);
+        }
+        Ok(None)
     }
 
     /// 获取或创建熔断器

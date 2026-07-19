@@ -65,7 +65,8 @@ export const providersApi = {
 
   async updateTrayMenu(): Promise<boolean> {
     console.warn("update_tray_menu not available in web mode");
-    return true;
+    // Do not fake success — callers must treat false as unsupported.
+    return false;
   },
 
   async updateSortOrder(

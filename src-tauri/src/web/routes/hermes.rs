@@ -40,10 +40,10 @@ async fn get_memory_limits() -> Json<serde_json::Value> {
 }
 
 async fn launch_dashboard() -> Json<serde_json::Value> {
-    // Desktop-only, stub for web
-    ok(true)
+    // Desktop-only (opens native window / local process).
+    err("Hermes dashboard launch is not available in web/headless mode")
 }
 
 async fn open_web_ui() -> Json<serde_json::Value> {
-    ok(true)
+    err("Hermes web UI open is not available in web/headless mode")
 }

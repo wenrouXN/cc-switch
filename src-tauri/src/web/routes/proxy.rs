@@ -124,18 +124,22 @@ async fn switch_provider(
 
     // Delegate to ProviderService::switch — handles takeover, normal mode, DB, live config
     match ProviderService::switch(&state, app_type, &req.provider_id) {
-        Ok(_) => {
-            // Also update proxy target if proxy is running
-            let _ = state
+        Ok(mut result) => {
+            if let Err(e) = state
                 .proxy_service
                 .switch_proxy_target(&req.app_type, &req.provider_id)
-                .await;
+                .await
+            {
+                result
+                    .warnings
+                    .push(format!("proxy target update failed: {e}"));
+            }
             broadcast(
                 &ws,
                 "proxy.provider_switched",
                 json!({"app": req.app_type, "id": req.provider_id}),
             );
-            ok(true)
+            ok(result)
         }
         Err(e) => err(e.to_string()),
     }

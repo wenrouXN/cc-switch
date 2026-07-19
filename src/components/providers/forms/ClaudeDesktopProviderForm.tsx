@@ -63,10 +63,8 @@ import {
   showFetchModelsError,
   type FetchedModel,
 } from "@/lib/api/model-fetch";
-import {
-  providersApi,
-  type ClaudeDesktopDefaultRoute,
-} from "@/lib/api/providers";
+import { providersApi } from "@/lib/api";
+import type { ClaudeDesktopDefaultRoute } from "@/lib/api/providers";
 import { resolveManagedAccountId } from "@/lib/authBinding";
 
 export type ClaudeDesktopProviderFormValues = ProviderFormData & {

@@ -68,15 +68,10 @@ async fn toggle_app(
     Path(_id): Path<String>,
     Json(_req): Json<ToggleReq>,
 ) -> Json<serde_json::Value> {
-    ok(true)
+    // Desktop has real toggle; web shell must not fake success.
+    err("MCP app toggle is not available in web/headless mode")
 }
 
 async fn import_from_apps() -> Json<serde_json::Value> {
-    // Import from local app configs — replicate core logic
-    let mut total = 0usize;
-    // Try importing from claude config
-    if let Ok(count) = Ok::<usize, String>(0) {
-        total += count;
-    }
-    ok(total)
+    err("MCP import from apps is not available in web/headless mode")
 }

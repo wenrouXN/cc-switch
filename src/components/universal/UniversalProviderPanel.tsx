@@ -56,23 +56,6 @@ export function UniversalProviderPanel() {
     async (provider: UniversalProvider) => {
       try {
         await universalProvidersApi.upsert(provider);
-
-        // 新建模式下自动同步到各应用
-        if (!editingProvider) {
-          await universalProvidersApi.sync(provider.id);
-        }
-
-        toast.success(
-          editingProvider
-            ? t("universalProvider.updated", {
-                defaultValue: "统一供应商已更新",
-              })
-            : t("universalProvider.addedAndSynced", {
-                defaultValue: "统一供应商已添加并同步",
-              }),
-        );
-        loadProviders();
-        setEditingProvider(null);
       } catch (error) {
         console.error("Failed to save universal provider:", error);
         toast.error(
@@ -80,7 +63,35 @@ export function UniversalProviderPanel() {
             defaultValue: "保存统一供应商失败",
           }),
         );
+        return;
       }
+
+      // 新建模式下自动同步到各应用（与 upsert 分开 toast，避免「已存却显示失败」）
+      if (!editingProvider) {
+        try {
+          await universalProvidersApi.sync(provider.id);
+          toast.success(
+            t("universalProvider.addedAndSynced", {
+              defaultValue: "统一供应商已添加并同步",
+            }),
+          );
+        } catch (error) {
+          console.error("Failed to sync universal provider:", error);
+          toast.warning(
+            t("universalProvider.savedButSyncFailed", {
+              defaultValue: "已保存，但同步到各应用失败",
+            }),
+          );
+        }
+      } else {
+        toast.success(
+          t("universalProvider.updated", {
+            defaultValue: "统一供应商已更新",
+          }),
+        );
+      }
+      loadProviders();
+      setEditingProvider(null);
     },
     [editingProvider, loadProviders, t],
   );
@@ -90,6 +101,16 @@ export function UniversalProviderPanel() {
     async (provider: UniversalProvider) => {
       try {
         await universalProvidersApi.upsert(provider);
+      } catch (error) {
+        console.error("Failed to save universal provider:", error);
+        toast.error(
+          t("universalProvider.saveError", {
+            defaultValue: "保存统一供应商失败",
+          }),
+        );
+        return;
+      }
+      try {
         await universalProvidersApi.sync(provider.id);
         toast.success(
           t("universalProvider.savedAndSynced", {
@@ -99,12 +120,14 @@ export function UniversalProviderPanel() {
         loadProviders();
         setEditingProvider(null);
       } catch (error) {
-        console.error("Failed to save and sync universal provider:", error);
-        toast.error(
-          t("universalProvider.saveAndSyncError", {
-            defaultValue: "保存并同步失败",
+        console.error("Failed to sync universal provider:", error);
+        toast.warning(
+          t("universalProvider.savedButSyncFailed", {
+            defaultValue: "已保存，但同步到各应用失败",
           }),
         );
+        loadProviders();
+        setEditingProvider(null);
       }
     },
     [loadProviders, t],

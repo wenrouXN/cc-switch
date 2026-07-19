@@ -70,25 +70,25 @@ async fn add_repo(
 }
 
 async fn get_backups() -> Json<serde_json::Value> {
-    ok(json!([]))
+    err("Skills backups listing is not available in web/headless mode")
 }
 
 async fn discover() -> Json<serde_json::Value> {
-    ok(json!([]))
+    err("Skills discovery is not available in web/headless mode")
 }
 
 async fn check_updates() -> Json<serde_json::Value> {
-    ok(json!([]))
+    err("Skills update check is not available in web/headless mode")
 }
 
 async fn import_skills() -> Json<serde_json::Value> {
-    ok(0)
+    err("Skills import is not available in web/headless mode")
 }
 
 async fn scan_unmanaged() -> Json<serde_json::Value> {
-    ok(json!([]))
+    err("Skills unmanaged scan is not available in web/headless mode")
 }
 
 async fn migrate_storage() -> Json<serde_json::Value> {
-    ok(true)
+    err("Skills storage migration is not available in web/headless mode")
 }
