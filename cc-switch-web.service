@@ -5,12 +5,13 @@ After=network.target
 [Service]
 Type=simple
 User=guofukun
-WorkingDirectory=/vol1/1000/config/share/ccswitch-web-official
-ExecStart=/vol1/1000/config/share/ccswitch-web-official/cc-switch --headless --enable-web
+WorkingDirectory=/vol1/1000/config/share/projects/cc-switch-web-official/cc-switch
+ExecStart=/usr/local/bin/cc-switch --headless --enable-web
 Restart=on-failure
 RestartSec=5
 Environment=CC_SWITCH_WEB_PORT=17667
 Environment=CC_SWITCH_WEB_BIND_ALL=true
+Environment=CC_SWITCH_WEB_NO_AUTH=true
 
 [Install]
 WantedBy=multi-user.target
