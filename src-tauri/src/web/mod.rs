@@ -68,6 +68,8 @@ pub fn create_router(app_state: Arc<AppState>, ws_state: Arc<WsState>) -> Router
         .nest("/sessions", routes::sessions::routes())
         .nest("/hermes", routes::hermes::routes())
         .nest("/openclaw", routes::openclaw::routes())
+        .nest("/profiles", routes::profiles::routes())
+        .nest("/subscription", routes::subscription::routes())
         .nest("/usage", routes::usage::routes())
         .nest(
             "/universal-providers",

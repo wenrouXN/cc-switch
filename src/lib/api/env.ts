@@ -8,7 +8,7 @@ import { isTauri } from "@/lib/environment";
 
 /**
  * 检查指定应用的环境变量冲突
- * @param appType 应用类型 ("claude" | "codex" | "gemini")
+ * @param appType 应用类型 ("claude" | "codex" | "gemini" | "grokbuild")
  * @returns 环境变量冲突列表
  */
 export async function checkEnvConflicts(
@@ -45,7 +45,7 @@ export async function checkAllEnvConflicts(): Promise<
   Record<string, EnvConflict[]>
 > {
   if (!isTauri()) return {};
-  const apps = ["claude", "codex", "gemini"];
+  const apps = ["claude", "codex", "gemini", "grokbuild"];
   const results: Record<string, EnvConflict[]> = {};
 
   await Promise.all(

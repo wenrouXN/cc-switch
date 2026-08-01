@@ -135,6 +135,14 @@ export const providersApi = {
   async ensureClaudeDesktopOfficialProvider(): Promise<boolean> {
     return post("/providers/ensure-claude-desktop-official", {});
   },
+
+  async ensureCodexOfficialProvider(): Promise<boolean> {
+    return post("/providers/ensure-codex-official", {});
+  },
+
+  async ensureGrokBuildOfficialProvider(): Promise<boolean> {
+    return post("/providers/ensure-grokbuild-official", {});
+  },
 };
 
 export const universalProvidersApi = {

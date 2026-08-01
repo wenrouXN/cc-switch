@@ -5,7 +5,6 @@ import {
   keepPreviousData,
 } from "@tanstack/react-query";
 import {
-  skillsApi,
   type SkillBackupEntry,
   type DiscoverableSkill,
   type ImportSkillSelection,
@@ -13,6 +12,7 @@ import {
   type SkillUpdateInfo,
   type SkillsShSearchResult,
 } from "@/lib/api/skills";
+import { skillsApi } from "@/lib/api";
 import type { AppId } from "@/lib/api/types";
 import { mergeImportedSkills } from "@/hooks/useSkills.helpers";
 

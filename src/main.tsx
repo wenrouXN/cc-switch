@@ -11,6 +11,17 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { queryClient } from "@/lib/query";
 import { Toaster } from "@/components/ui/sonner";
 import { isTauri } from "@/lib/environment";
+import { FrontendErrorBoundary } from "./components/FrontendErrorBoundary";
+import {
+  installGlobalErrorHandlers,
+  reportFrontendError,
+} from "./lib/frontendLogger";
+import {
+  MODELS_DEV_SYNC_CONFIG_QUERY_KEY,
+  syncModelsDevPricingOnStartup,
+} from "./lib/modelsDevAutoSync";
+
+installGlobalErrorHandlers();
 
 // 根据平台添加 body class，便于平台特定样式
 try {
@@ -66,16 +77,16 @@ async function handleConfigLoadError(
 
 // 监听后端的配置加载错误事件：仅提醒用户并强制退出，不修改任何配置文件
 if (isTauri()) {
-  import("@tauri-apps/api/event").then(({ listen }) => {
-    try {
-      void listen("configLoadError", async (evt) => {
+  void import("@tauri-apps/api/event")
+    .then(({ listen }) =>
+      listen("configLoadError", async (evt) => {
         await handleConfigLoadError(evt.payload as ConfigLoadErrorPayload | null);
-      });
-    } catch (e) {
+      }),
+    )
+    .catch((e) => {
       // 忽略事件订阅异常（例如在非 Tauri 环境下）
-      console.error("订阅 configLoadError 事件失败", e);
-    }
-  });
+      reportFrontendError("config_load_error_listener", e);
+    });
 }
 
 async function bootstrap() {
@@ -90,10 +101,12 @@ async function bootstrap() {
         // 数据库版本过新：渲染应用内「升级应用」恢复界面，不进入正常 App
         ReactDOM.createRoot(document.getElementById("root")!).render(
           <React.StrictMode>
+            <FrontendErrorBoundary>
             <ThemeProvider defaultTheme="system" storageKey="cc-switch-theme">
               <DatabaseUpgrade payload={initError} />
               <Toaster />
             </ThemeProvider>
+            </FrontendErrorBoundary>
           </React.StrictMode>,
         );
         return;
@@ -105,22 +118,43 @@ async function bootstrap() {
       }
     } catch (e) {
       // 忽略拉取错误，继续渲染
-      console.error("拉取初始化错误失败", e);
+      reportFrontendError("get_init_error", e);
     }
   }
 
   ReactDOM.createRoot(document.getElementById("root")!).render(
     <React.StrictMode>
-      <QueryClientProvider client={queryClient}>
-        <ThemeProvider defaultTheme="system" storageKey="cc-switch-theme">
-          <UpdateProvider>
-            <App />
-            <Toaster />
-          </UpdateProvider>
-        </ThemeProvider>
-      </QueryClientProvider>
+      <FrontendErrorBoundary>
+        <QueryClientProvider client={queryClient}>
+          <ThemeProvider defaultTheme="system" storageKey="cc-switch-theme">
+            <UpdateProvider>
+              <App />
+              <Toaster />
+            </UpdateProvider>
+          </ThemeProvider>
+        </QueryClientProvider>
+      </FrontendErrorBoundary>
     </React.StrictMode>,
   );
+
+  void syncModelsDevPricingOnStartup()
+    .then((result) => {
+      if (!result.skipped) {
+        return Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["usage"] }),
+          queryClient.invalidateQueries({
+            queryKey: MODELS_DEV_SYNC_CONFIG_QUERY_KEY,
+          }),
+        ]);
+      }
+    })
+    .catch((error) => {
+      // 离线或 models.dev 暂时不可用不应阻塞应用启动。
+      reportFrontendError("models_dev_startup_sync", error);
+      void queryClient.invalidateQueries({
+        queryKey: MODELS_DEV_SYNC_CONFIG_QUERY_KEY,
+      });
+    });
 }
 
 void bootstrap();

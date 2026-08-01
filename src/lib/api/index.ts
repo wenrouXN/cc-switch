@@ -18,14 +18,21 @@ import { openclawApi as webOpenclawApi } from "./web/openclaw";
 import { hermesApi as webHermesApi } from "./web/hermes";
 import { usageApi as webUsageApi } from "./web/usage";
 import { workspaceApi as webWorkspaceApi } from "./web/workspace";
+import { profilesApi as webProfilesApi } from "./web/profiles";
+import { authApi as webAuthApi } from "./web/auth";
+import { subscriptionApi as webSubscriptionApi } from "./web/subscription";
 import { vscodeApi } from "./vscode";
-import { authApi } from "./auth";
-import { subscriptionApi } from "./subscription";
 
 export type { AppId } from "./types";
 export type { ProviderSwitchEvent } from "./providers";
 export type { Prompt } from "./prompts";
-export type { GitHubAccount } from "./copilot";
+export type { Profile, ProfilePayload, ProfilesResponse } from "./profiles";
+export type { DailyMemoryFileInfo, DailyMemorySearchResult } from "./workspace";
+export type {
+  CopilotDeviceCodeResponse,
+  CopilotAuthStatus,
+  GitHubAccount,
+} from "./copilot";
 export type {
   ManagedAuthProvider,
   ManagedAuthStatus,
@@ -51,6 +58,9 @@ let _tauriOpenclawApi: any = null;
 let _tauriHermesApi: any = null;
 let _tauriUsageApi: any = null;
 let _tauriWorkspaceApi: any = null;
+let _tauriProfilesApi: any = null;
+let _tauriAuthApi: any = null;
+let _tauriSubscriptionApi: any = null;
 
 async function loadTauriApis() {
   if (_tauriLoaded) return;
@@ -67,6 +77,9 @@ async function loadTauriApis() {
     hermes,
     usage,
     workspace,
+    profiles,
+    auth,
+    subscription,
     config,
   ] = await Promise.all([
     import("./providers"),
@@ -81,6 +94,9 @@ async function loadTauriApis() {
     import("./hermes"),
     import("./usage"),
     import("./workspace"),
+    import("./profiles"),
+    import("./auth"),
+    import("./subscription"),
     import("./config"),
   ]);
   _tauriProvidersApi = providers.providersApi;
@@ -98,6 +114,9 @@ async function loadTauriApis() {
   _tauriHermesApi = hermes.hermesApi;
   _tauriUsageApi = usage.usageApi;
   _tauriWorkspaceApi = workspace.workspaceApi;
+  _tauriProfilesApi = profiles.profilesApi;
+  _tauriAuthApi = auth.authApi;
+  _tauriSubscriptionApi = subscription.subscriptionApi;
   _tauriLoaded = true;
 }
 
@@ -108,31 +127,56 @@ if (useTauri) {
   loadTauriApis();
 }
 
-// Helper to get Tauri API or fall back to web API
-function pickApi<T>(tauriApi: T | null, webApi: T): T {
-  return useTauri && tauriApi !== null ? tauriApi : webApi;
+// Tauri modules load asynchronously. Proxy each method so desktop calls wait for
+// that load, while web calls go straight to the REST implementation.
+function pickApi<T extends object>(getTauriApi: () => T | null, webApi: T): T {
+  if (!useTauri) return webApi;
+
+  return new Proxy(webApi, {
+    get(_target, property) {
+      return async (...args: unknown[]) => {
+        await loadTauriApis();
+        const tauriApi = getTauriApi();
+        const method = tauriApi?.[property as keyof T];
+        if (typeof method !== "function") {
+          throw new Error(`Tauri API method is unavailable: ${String(property)}`);
+        }
+        return method.apply(tauriApi, args);
+      };
+    },
+  });
 }
 
 // Export APIs — always available (web APIs as fallback)
-export const providersApi = pickApi(_tauriProvidersApi, webProvidersApi);
+export const providersApi = pickApi(
+  () => _tauriProvidersApi,
+  webProvidersApi,
+);
 export const universalProvidersApi = pickApi(
-  _tauriUniversalProvidersApi,
+  () => _tauriUniversalProvidersApi,
   webUniversalProvidersApi,
 );
-export const settingsApi = pickApi(_tauriSettingsApi, webSettingsApi);
-export const backupsApi = pickApi(_tauriBackupsApi, webBackupsApi);
-export const mcpApi = pickApi(_tauriMcpApi, webMcpApi);
-export const configApi = pickApi(_tauriConfigApi, webConfigApi);
-export const promptsApi = pickApi(_tauriPromptsApi, webPromptsApi);
-export const skillsApi = pickApi(_tauriSkillsApi, webSkillsApi);
-export const proxyApi = pickApi(_tauriProxyApi, webProxyApi);
-export const failoverApi = pickApi(_tauriFailoverApi, webFailoverApi);
-export const sessionsApi = pickApi(_tauriSessionsApi, webSessionsApi);
-export const openclawApi = pickApi(_tauriOpenclawApi, webOpenclawApi);
-export const hermesApi = pickApi(_tauriHermesApi, webHermesApi);
-export const usageApi = pickApi(_tauriUsageApi, webUsageApi);
+export const settingsApi = pickApi(() => _tauriSettingsApi, webSettingsApi);
+export const backupsApi = pickApi(() => _tauriBackupsApi, webBackupsApi);
+export const mcpApi = pickApi(() => _tauriMcpApi, webMcpApi);
+export const configApi = pickApi(() => _tauriConfigApi, webConfigApi);
+export const promptsApi = pickApi(() => _tauriPromptsApi, webPromptsApi);
+export const skillsApi = pickApi(() => _tauriSkillsApi, webSkillsApi);
+export const proxyApi = pickApi(() => _tauriProxyApi, webProxyApi);
+export const failoverApi = pickApi(() => _tauriFailoverApi, webFailoverApi);
+export const sessionsApi = pickApi(() => _tauriSessionsApi, webSessionsApi);
+export const openclawApi = pickApi(() => _tauriOpenclawApi, webOpenclawApi);
+export const hermesApi = pickApi(() => _tauriHermesApi, webHermesApi);
+export const usageApi = pickApi(() => _tauriUsageApi, webUsageApi);
 export { vscodeApi };
-export const workspaceApi = pickApi(_tauriWorkspaceApi, webWorkspaceApi);
-export { authApi };
+export const workspaceApi = pickApi(
+  () => _tauriWorkspaceApi,
+  webWorkspaceApi,
+);
+export const profilesApi = pickApi(() => _tauriProfilesApi, webProfilesApi);
+export const authApi = pickApi(() => _tauriAuthApi, webAuthApi);
 export * as copilotApi from "./copilot";
-export { subscriptionApi };
+export const subscriptionApi = pickApi(
+  () => _tauriSubscriptionApi,
+  webSubscriptionApi,
+);

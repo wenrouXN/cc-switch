@@ -8,6 +8,8 @@ import type {
   RequestLog,
   LogFilters,
   ModelPricing,
+  ModelsDevSyncConfig,
+  ModelsDevSyncState,
   ProviderLimitStatus,
   PaginatedLogs,
   SessionSyncResult,
@@ -167,6 +169,29 @@ export const usageApi = {
     });
   },
 
+  updateModelPricingBatch: async (
+    entries: ModelPricing[],
+  ): Promise<number> => {
+    return post("/usage/model-pricing/batch", entries);
+  },
+
+  getModelsDevSyncConfig: async (): Promise<ModelsDevSyncState> => {
+    return get("/usage/models-dev-sync");
+  },
+
+  saveModelsDevSyncConfig: async (
+    config: ModelsDevSyncConfig,
+  ): Promise<void> => {
+    return post("/usage/models-dev-sync/config", config);
+  },
+
+  recordModelsDevSyncResult: async (
+    syncedAt: number | null,
+    error: string | null,
+  ): Promise<void> => {
+    return post("/usage/models-dev-sync/result", { syncedAt, error });
+  },
+
   deleteModelPricing: async (modelId: string): Promise<void> => {
     return post("/usage/model-pricing/delete", { modelId });
   },
@@ -180,6 +205,10 @@ export const usageApi = {
 
   syncSessionUsage: async (): Promise<SessionSyncResult> => {
     return post("/usage/sync", {});
+  },
+
+  rebuildCodexUsage: async (): Promise<SessionSyncResult> => {
+    return post("/usage/rebuild-codex", {});
   },
 
   getDataSourceBreakdown: async (): Promise<DataSourceSummary[]> => {

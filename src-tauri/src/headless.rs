@@ -81,7 +81,14 @@ pub fn run_headless() -> ! {
     rt.block_on(async {
         // Auto-start local proxy when any app has proxy/takeover enabled in DB.
         // Without this, headless restarts leave :15721 down until a manual POST /proxy/start.
-        let apps = ["claude", "codex", "gemini", "opencode", "openclaw"];
+        let apps = [
+            "claude",
+            "codex",
+            "gemini",
+            "grokbuild",
+            "opencode",
+            "openclaw",
+        ];
         let mut should_start = false;
         for app in apps {
             match app_state.db.get_proxy_config_for_app(app).await {

@@ -38,6 +38,11 @@ pub fn routes() -> Router<Shared> {
             "/ensure-claude-desktop-official",
             post(ensure_claude_desktop_official),
         )
+        .route("/ensure-codex-official", post(ensure_codex_official))
+        .route(
+            "/ensure-grokbuild-official",
+            post(ensure_grokbuild_official),
+        )
         .route("/claude-desktop-status", get(claude_desktop_status))
         .route(
             "/claude-desktop-default-routes",
@@ -347,6 +352,26 @@ async fn ensure_claude_desktop_official(
     ) {
         Ok(v) => ok(v),
         Err(e) => err(e.to_string()),
+    }
+}
+
+async fn ensure_codex_official(State((state, _)): State<Shared>) -> Json<serde_json::Value> {
+    match state
+        .db
+        .ensure_official_seed_by_id(crate::database::CODEX_OFFICIAL_PROVIDER_ID, AppType::Codex)
+    {
+        Ok(value) => ok(value),
+        Err(error) => err(error),
+    }
+}
+
+async fn ensure_grokbuild_official(State((state, _)): State<Shared>) -> Json<serde_json::Value> {
+    match state.db.ensure_official_seed_by_id(
+        crate::database::GROKBUILD_OFFICIAL_PROVIDER_ID,
+        AppType::GrokBuild,
+    ) {
+        Ok(value) => ok(value),
+        Err(error) => err(error),
     }
 }
 

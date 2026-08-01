@@ -8,6 +8,7 @@ use axum::{
 use serde::Deserialize;
 use std::sync::Arc;
 
+use crate::services::model_pricing::{ModelPricingInfo, ModelsDevSyncConfig};
 use crate::store::AppState;
 use crate::web::WsState;
 
@@ -24,9 +25,17 @@ pub fn routes() -> Router<Shared> {
         .route("/request-detail", get(get_request_detail))
         .route("/model-pricing", get(get_model_pricing))
         .route("/model-pricing", post(update_model_pricing))
+        .route("/model-pricing/batch", post(update_model_pricing_batch))
         .route("/model-pricing/delete", post(delete_model_pricing))
+        .route("/models-dev-sync", get(get_models_dev_sync_config))
+        .route("/models-dev-sync/config", post(save_models_dev_sync_config))
+        .route(
+            "/models-dev-sync/result",
+            post(record_models_dev_sync_result),
+        )
         .route("/provider-limits", get(check_provider_limits))
         .route("/sync", post(sync_session_usage))
+        .route("/rebuild-codex", post(rebuild_codex_usage))
         .route("/data-sources", get(get_data_sources))
 }
 
@@ -221,6 +230,9 @@ async fn get_model_pricing(State((state, _)): State<Shared>) -> Json<serde_json:
     if let Err(e) = state.db.ensure_model_pricing_seeded() {
         return err(e);
     }
+    if let Err(e) = crate::services::model_pricing::sync_local_model_pricing(&state.db) {
+        return err(e);
+    }
     let db = state.db.clone();
     let conn = match db.conn.lock() {
         Ok(c) => c,
@@ -269,39 +281,67 @@ async fn update_model_pricing(
     State((state, _)): State<Shared>,
     Json(body): Json<UpdatePricingBody>,
 ) -> Json<serde_json::Value> {
-    let db = state.db.clone();
-    let model_id = body.model_id.trim().to_string();
-    let display_name = body.display_name.trim().to_string();
-    if model_id.is_empty() {
-        return err("model_id required");
-    }
-    if display_name.is_empty() {
-        return err("display_name required");
-    }
-
-    let conn = match db.conn.lock() {
-        Ok(c) => c,
-        Err(e) => return err(format!("Mutex lock failed: {e}")),
-    };
-    match conn.execute(
-        "INSERT OR REPLACE INTO model_pricing (
-            model_id, display_name, input_cost_per_million, output_cost_per_million,
-            cache_read_cost_per_million, cache_creation_cost_per_million
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-        rusqlite::params![
-            model_id,
-            display_name,
-            body.input_cost.trim(),
-            body.output_cost.trim(),
-            body.cache_read_cost.trim(),
-            body.cache_creation_cost.trim()
-        ],
+    match crate::services::model_pricing::update_model_pricing(
+        &state.db,
+        ModelPricingInfo {
+            model_id: body.model_id,
+            display_name: body.display_name,
+            input_cost_per_million: body.input_cost,
+            output_cost_per_million: body.output_cost,
+            cache_read_cost_per_million: body.cache_read_cost,
+            cache_creation_cost_per_million: body.cache_creation_cost,
+        },
     ) {
-        Ok(_) => {
-            let _ = db.backfill_missing_usage_costs_for_model(&model_id);
-            ok(true)
-        }
-        Err(e) => err(e.to_string()),
+        Ok(_) => ok(true),
+        Err(error) => err(error),
+    }
+}
+
+async fn update_model_pricing_batch(
+    State((state, _)): State<Shared>,
+    Json(entries): Json<Vec<ModelPricingInfo>>,
+) -> Json<serde_json::Value> {
+    match crate::services::model_pricing::update_model_pricing_batch(&state.db, entries) {
+        Ok(changed) => ok(changed),
+        Err(error) => err(error),
+    }
+}
+
+async fn get_models_dev_sync_config(State((state, _)): State<Shared>) -> Json<serde_json::Value> {
+    match crate::services::model_pricing::get_models_dev_sync_state(&state.db) {
+        Ok(config) => ok(config),
+        Err(error) => err(error),
+    }
+}
+
+async fn save_models_dev_sync_config(
+    State((state, _)): State<Shared>,
+    Json(config): Json<ModelsDevSyncConfig>,
+) -> Json<serde_json::Value> {
+    match crate::services::model_pricing::save_models_dev_sync_config(&state.db, config) {
+        Ok(()) => ok(true),
+        Err(error) => err(error),
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ModelsDevSyncResultBody {
+    synced_at: Option<i64>,
+    error: Option<String>,
+}
+
+async fn record_models_dev_sync_result(
+    State((state, _)): State<Shared>,
+    Json(body): Json<ModelsDevSyncResultBody>,
+) -> Json<serde_json::Value> {
+    match crate::services::model_pricing::record_models_dev_sync_result(
+        &state.db,
+        body.synced_at,
+        body.error,
+    ) {
+        Ok(()) => ok(true),
+        Err(error) => err(error),
     }
 }
 
@@ -309,17 +349,9 @@ async fn delete_model_pricing(
     State((state, _)): State<Shared>,
     Json(body): Json<DeletePricingBody>,
 ) -> Json<serde_json::Value> {
-    let db = state.db.clone();
-    let conn = match db.conn.lock() {
-        Ok(c) => c,
-        Err(e) => return err(format!("Mutex lock failed: {e}")),
-    };
-    match conn.execute(
-        "DELETE FROM model_pricing WHERE model_id = ?1",
-        rusqlite::params![body.model_id],
-    ) {
-        Ok(_) => ok(true),
-        Err(e) => err(e.to_string()),
+    match crate::services::model_pricing::delete_model_pricing(&state.db, &body.model_id) {
+        Ok(()) => ok(true),
+        Err(error) => err(error),
     }
 }
 
@@ -334,49 +366,27 @@ async fn check_provider_limits(
 }
 
 async fn sync_session_usage(State((state, _)): State<Shared>) -> Json<serde_json::Value> {
-    let mut result = crate::services::session_usage::sync_claude_session_logs(&state.db)
-        .unwrap_or_else(|e| crate::services::session_usage::SessionSyncResult {
-            imported: 0,
-            skipped: 0,
-            files_scanned: 0,
-            errors: vec![e.to_string()],
-        });
-
-    match crate::services::session_usage_codex::sync_codex_usage(&state.db) {
-        Ok(r) => {
-            result.imported += r.imported;
-            result.skipped += r.skipped;
-            result.files_scanned += r.files_scanned;
-            result.errors.extend(r.errors);
-        }
-        Err(e) => {
-            result.errors.push(format!("Codex: {e}"));
-        }
-    }
-    match crate::services::session_usage_gemini::sync_gemini_usage(&state.db) {
-        Ok(r) => {
-            result.imported += r.imported;
-            result.skipped += r.skipped;
-            result.files_scanned += r.files_scanned;
-            result.errors.extend(r.errors);
-        }
-        Err(e) => {
-            result.errors.push(format!("Gemini: {e}"));
-        }
-    }
-    match crate::services::session_usage_opencode::sync_opencode_usage(&state.db) {
-        Ok(r) => {
-            result.imported += r.imported;
-            result.skipped += r.skipped;
-            result.files_scanned += r.files_scanned;
-            result.errors.extend(r.errors);
-        }
-        Err(e) => {
-            result.errors.push(format!("OpenCode: {e}"));
-        }
-    }
-
+    let _guard = crate::services::session_usage::session_sync_mutex()
+        .lock()
+        .await;
+    let result = crate::services::session_usage::sync_all_unlocked(&state.db);
     ok(result)
+}
+
+async fn rebuild_codex_usage(State((state, _)): State<Shared>) -> Json<serde_json::Value> {
+    let _guard = crate::services::session_usage::session_sync_mutex()
+        .lock()
+        .await;
+    if let Err(error) = state.db.backup_database_file() {
+        return err(error);
+    }
+    if let Err(error) = state.db.reset_codex_usage() {
+        return err(error);
+    }
+    match crate::services::session_usage_codex::sync_codex_usage(&state.db) {
+        Ok(result) => ok(result),
+        Err(error) => err(error),
+    }
 }
 
 async fn get_data_sources(State((state, _)): State<Shared>) -> Json<serde_json::Value> {

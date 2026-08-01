@@ -18,7 +18,7 @@ import {
   workspaceApi,
   type DailyMemoryFileInfo,
   type DailyMemorySearchResult,
-} from "@/lib/api/workspace";
+} from "@/lib/api";
 
 interface DailyMemoryPanelProps {
   isOpen: boolean;
