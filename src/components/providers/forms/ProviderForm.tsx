@@ -59,6 +59,7 @@ import {
   hasApiKeyField,
 } from "@/utils/providerConfigUtils";
 import { mergeProviderMeta } from "@/utils/providerMetaUtils";
+import { generateUUID } from "@/utils/uuid";
 import {
   codexApiFormatFromWireApi,
   extractCodexWireApi,
@@ -1460,7 +1461,7 @@ function ProviderFormFull({
       if (isAnyOmoCategory) {
         if (!isEditMode) {
           const prefix = category === "omo" ? "omo" : "omo-slim";
-          payload.providerKey = `${prefix}-${crypto.randomUUID().slice(0, 8)}`;
+          payload.providerKey = `${prefix}-${generateUUID().slice(0, 8)}`;
         }
       } else {
         payload.providerKey = opencodeForm.opencodeProviderKey;

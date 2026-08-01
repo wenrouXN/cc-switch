@@ -41,6 +41,7 @@ import {
   type FetchedModel,
 } from "@/lib/api/model-fetch";
 import { openclawApiProtocols } from "@/config/openclawProviderPresets";
+import { generateUUID } from "@/utils/uuid";
 import type { ProviderCategory, OpenClawModel } from "@/types";
 
 interface OpenClawFormFieldsProps {
@@ -99,7 +100,7 @@ export function OpenClawFormFields({
   const getModelKeys = useCallback(() => {
     // Grow keys array if models were added externally
     while (modelKeysRef.current.length < models.length) {
-      modelKeysRef.current.push(crypto.randomUUID());
+      modelKeysRef.current.push(generateUUID());
     }
     // Shrink if models were removed externally
     if (modelKeysRef.current.length > models.length) {
@@ -116,7 +117,7 @@ export function OpenClawFormFields({
 
   // Add a new model entry
   const handleAddModel = () => {
-    modelKeysRef.current.push(crypto.randomUUID());
+    modelKeysRef.current.push(generateUUID());
     onModelsChange([
       ...models,
       {

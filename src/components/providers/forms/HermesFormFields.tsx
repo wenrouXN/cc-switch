@@ -50,6 +50,7 @@ import {
   type HermesApiMode,
   type HermesModel,
 } from "@/config/hermesProviderPresets";
+import { generateUUID } from "@/utils/uuid";
 import type { ProviderCategory } from "@/types";
 
 interface HermesFormFieldsProps {
@@ -185,7 +186,7 @@ export function HermesFormFields({
   // rows doesn't re-mount unrelated inputs (would drop focus mid-typing).
   const modelKeysRef = useRef<string[]>([]);
   while (modelKeysRef.current.length < models.length) {
-    modelKeysRef.current.push(crypto.randomUUID());
+    modelKeysRef.current.push(generateUUID());
   }
   if (modelKeysRef.current.length > models.length) {
     modelKeysRef.current.length = models.length;
@@ -215,7 +216,7 @@ export function HermesFormFields({
   };
 
   const handleAddModel = () => {
-    modelKeysRef.current.push(crypto.randomUUID());
+    modelKeysRef.current.push(generateUUID());
     onModelsChange([
       ...models,
       { id: "", name: "", context_length: undefined },

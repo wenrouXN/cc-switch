@@ -67,6 +67,7 @@ import {
 import { providersApi } from "@/lib/api";
 import type { ClaudeDesktopDefaultRoute } from "@/lib/api/providers";
 import { resolveManagedAccountId } from "@/lib/authBinding";
+import { generateUUID } from "@/utils/uuid";
 import { useCopilotAuth, useCodexOauth, useXaiOauth } from "./hooks";
 import { isOAuthProviderType } from "@/config/constants";
 
@@ -169,7 +170,7 @@ function fallbackCatalogRouteId(usedRoutes: Set<string>) {
 
 function createRouteRow(row: RouteRowValues): RouteRow {
   return {
-    rowId: crypto.randomUUID(),
+    rowId: generateUUID(),
     ...row,
   };
 }

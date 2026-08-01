@@ -37,6 +37,7 @@ import {
 import { CustomUserAgentField } from "./CustomUserAgentField";
 import { LocalProxyRequestOverridesField } from "./LocalProxyRequestOverridesField";
 import { cn } from "@/lib/utils";
+import { generateUUID } from "@/utils/uuid";
 import type {
   ClaudeApiKeyField,
   CodexApiFormat,
@@ -122,7 +123,7 @@ type CodexCatalogRow = CodexCatalogModel & { rowId: string };
 
 function createCatalogRow(seed?: Partial<CodexCatalogModel>): CodexCatalogRow {
   return {
-    rowId: crypto.randomUUID(),
+    rowId: generateUUID(),
     model: seed?.model ?? "",
     displayName: seed?.displayName ?? "",
     contextWindow: seed?.contextWindow ?? "",
